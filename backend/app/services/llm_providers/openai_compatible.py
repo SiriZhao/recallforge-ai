@@ -50,11 +50,7 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
     needs_v1_suffix = True
 
     def generate_stage(self, stage: str, prompt: str, config: LLMConfig, *, max_output_tokens: int) -> str:
-        """Run an unconstrained v4 reasoning/writing stage.
-
-        The stage prompt carries the structured evidence and intent; unlike the
-        legacy StudyUnit call, no fixed field/count schema is imposed here.
-        """
+        """Run a typed stage; teaching prose stays natural inside JSON fields."""
         endpoint, model = self.prepare_request(config)
         payload = {
             "model": model,
@@ -65,6 +61,8 @@ class OpenAICompatibleLLMProvider(BaseLLMProvider):
             "temperature": 0.3,
             "max_tokens": max(512, int(max_output_tokens)),
         }
+        if self.name in {"deepseek", "openai", "qwen"}:
+            payload["response_format"] = {"type": "json_object"}
         result = self.post_chat_result(endpoint, config.api_key or "", payload, timeout=max(30, settings.request_timeout_seconds))
         return result.content
 

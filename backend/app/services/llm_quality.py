@@ -51,6 +51,8 @@ def validate_report_quality(
     file_count: int = 1,
     has_past_exam: bool | None = None,
 ) -> QualityResult:
+    if report.overview.get("artifacts"):
+        return validate_artifact_report(report)
     warnings: list[str] = []
     failures: list[str] = []
     body = build_report_body(report)
@@ -194,6 +196,42 @@ def validate_report_quality(
         duplicate_sections=engine_check.duplicate_sections,
         is_empty=engine_check.is_empty,
     )
+
+
+def validate_artifact_report(report: ReviewReport) -> QualityResult:
+    """Gate the active path by validated content/status, never length or quotas."""
+    artifacts=report.overview['artifacts']
+    quality=artifacts.get('quality_report',{})
+    failures=list(quality.get('failures',[]))
+    quarantined=quality.get('quarantined',[])
+    if quarantined:failures.append('quarantined_structured_items')
+    statuses=report.overview.get('unit_statuses',[])
+    unit_score=round(100*sum(status=='READY' for status in statuses)/len(statuses)) if statuses else 0
+    if report.overview.get('course_synthesis_status')=='PARTIAL':failures.append('course_synthesis_incomplete')
+    manifest=report.overview.get('coverage_manifest',{})
+    total=len(manifest.get('knowledge_ids',[]))
+    missing=manifest.get('missing_concept_mentions',[])
+    coverage=max(0,(total-len(missing))/total) if total else 0
+    if missing:failures.append('concept_mentions_missing_from_synthesis')
+    source_failures=[failure for failure in failures if 'source' in failure or 'relationship' in failure]
+    evidence_score=100 if total and not source_failures else 0
+    mock_score=100 if report.mock_exam.questions and not any('mock_exam' in failure for failure in failures) else 0
+    card_score=100 if report.anki_cards and not any('recall' in failure for failure in failures) else 0
+    empty=not report.markdown.strip()
+    export_score=0 if empty else 100
+    overall=min(unit_score,round(coverage*100),evidence_score,mock_score,card_score,export_score)
+    if failures:overall=min(overall,49)
+    warnings=['Scores reflect automated schema/reference/coverage gates, not human-verified factual correctness or learning effectiveness.',
+              'Concept coverage is name/alias presence; material-wide golden coverage and pedagogical depth require independent evaluation.']
+    for review in report.overview.get('unit_quality',[]):
+        if review.get('verdict')!='READY':
+            warnings.extend(review.get('issues',[]))
+    source=report.overview.get('source_coverage',{})
+    material_score=round(100*source.get('chunks_understood',0)/max(1,source.get('chunks_total',0)))
+    return QualityResult(quality_score=overall,material_completeness_score=material_score,topic_coverage_score=round(coverage*100),
+        mock_exam_quality_score=mock_score,anki_quality_score=card_score,export_readiness_score=export_score,
+        evidence_integration_score=evidence_score,quality_warnings=warnings,quality_failures=list(dict.fromkeys(failures)),
+        repairable=True,section_coverage_ratio=coverage,missing_sections=missing,duplicate_sections=[],is_empty=empty)
 
 
 def build_repair_report_prompt(

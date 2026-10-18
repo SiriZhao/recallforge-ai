@@ -87,3 +87,48 @@ logs. No paid requests have been sent. User requires a separate budget approval
 before even connection/smoke calls. Missing/unreliable gold answers must remain
 UNVERIFIED; model-written answers cannot become ground truth. A/B arms must use
 the same explicit DeepSeek model version, source subset, goals and total budget.
+
+## Exam evidence and persistent learning feedback (2026-10-18)
+
+Implemented conservative cross-file concept/alias merging with stable meaning IDs;
+different definitions remain distinct with conflict warnings. Added shared subject
+profiles for probability, programming, botany and organic chemistry. Added observed
+exam extraction, cross-page continuation, exact-text deduplication, answer-sheet
+exclusion and an evidence-labeled exam blueprint. Legacy report projections now
+retain question/card IDs, knowledge IDs, rubric and source refs.
+
+The existing Questions/Flashcards/KnowledgeMap/ResultsPage consume these fields
+without CSS or layout changes. Workspace-owned SQLite attempts, exam sessions,
+mastery and schedules persist real answers; nonce checks prevent duplicate updates.
+Objective choice scoring is relative to the reference, not proof of its correctness.
+Subjective grading remains explicitly pending self review; keyboard self ratings
+are learner reports. Recall exposure never implies mastery. Recommendations use
+observed ratings, prerequisite order, remaining days, target and daily time.
+
+New arithmetic verification uses a bounded AST interpreter, never eval/exec. Schema
+repair is limited to reported leaf paths so it cannot delete course concepts.
+Typed artifact-root and unit-plan contracts address observed real-model failures.
+Synthesis failure preserves model-authored units as explicit partial results.
+
+Validation: full backend 147 passed / 1 skipped; frontend 19 passed; lint,
+typecheck and build passed. New tests cover workspace isolation, answer restore,
+nonce idempotency, additive schema initialization, source deduplication, numeric
+safety, claim-preserving correction, and actual UI-to-API bindings. CSS build
+artifact remains index-DGYlaRpg.css. No main merge, tag change or release operation.
+
+Real evaluation: project .env explicitly selected despite inherited key override.
+Four local OCR probes completed. Confidence is a recognizer signal, not accuracy;
+blank answer sheets and chemical diagrams require special handling. Initial real
+probability/Python trials exposed truncation, invalid relation types and an invalid
+artifact-root contract; these are retained as failures, not benchmark wins. A
+botany trial produced populated structured artifacts with resolvable citations,
+but critic/synthesis remained partial. No reliable human gold answers or blinded
+human ratings are available, so factual correctness, 95% coverage and superiority
+over a general chat workflow remain unverified. Private sources, prompts, responses,
+OCR images and the durable spend ledger stay in ignored runtime/evaluation.
+
+Follow-up from real failures: validate unit knowledge IDs against the course graph
+and reject objective IDs; critic coverage is scoped to the actual assigned unit,
+with prerequisite closure. Active-path quality gates use reference resolution,
+coverage manifests, unit readiness and artifact validation rather than word count
+or question quotas. A partial synthesis cannot get a high score by adding filler.

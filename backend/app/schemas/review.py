@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.course_model import SourceRef
 
 
 class UploadedFileInfo(BaseModel):
@@ -296,6 +297,12 @@ class SprintPlan(BaseModel):
 
 
 class GeneratedExamQuestion(BaseModel):
+    question_id: str = ""
+    knowledge_ids: list[str] = Field(default_factory=list)
+    scoring_rubric: list[str] = Field(default_factory=list)
+    common_errors: list[str] = Field(default_factory=list)
+    source_refs: list[SourceRef] = Field(default_factory=list)
+    provenance: str = "GENERATED"
     question_type: str
     question: str
     answer: str
@@ -316,6 +323,9 @@ class GeneratedMockExam(BaseModel):
 
 
 class AnkiCard(BaseModel):
+    card_id: str = ""
+    knowledge_ids: list[str] = Field(default_factory=list)
+    source_refs: list[SourceRef] = Field(default_factory=list)
     front: str
     back: str
     tags: str

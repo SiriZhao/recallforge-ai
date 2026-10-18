@@ -142,6 +142,9 @@ export type SprintPlan = {
 };
 
 export type GeneratedExamQuestion = {
+  question_id?: string;
+  knowledge_ids?: string[];
+  scoring_rubric?: string[];
   question_type: string;
   type?: string;
   question: string;
@@ -157,6 +160,8 @@ export type GeneratedExamQuestion = {
 };
 
 export type AnkiCard = {
+  card_id?: string;
+  knowledge_ids?: string[];
   front: string;
   back: string;
   tags: string;

@@ -57,3 +57,15 @@ def test_synthesis_batches_stay_within_budget_and_do_not_silently_truncate():
     with pytest.raises(ValueError, match="one unit"):
         synthesize({"unit_drafts": [{"unit_id": "huge", "markdown": "evidence concept " * 10000}]},
             stage=stage, make_prompt=prompt, input_budget=1000, output_budget=200, validate=lambda value: value)
+
+
+def test_synthesis_failure_preserves_model_units_as_explicit_partial(monkeypatch):
+    class FailedSynthesis(GroundedProvider):
+        def generate_stage(self,stage,prompt,config,*,max_output_tokens):
+            if stage=='course_synthesis':raise RuntimeError('simulated output truncation')
+            return super().generate_stage(stage,prompt,config,max_output_tokens=max_output_tokens)
+    result,_=run(monkeypatch,FailedSynthesis())
+    assert result.llm_status=='partial'
+    assert 'Membrane' in result.report.markdown
+    assert result.report.overview['course_synthesis_status']=='PARTIAL'
+    assert result.report.practice_questions

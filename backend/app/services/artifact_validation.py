@@ -4,9 +4,10 @@ from pydantic import ValidationError
 from app.schemas.learning_artifacts import (
     LearningArtifacts, LearningMaterial, KnowledgeGraph, Question, RecallCard,
 )
-from app.schemas.review import GeneratedExamQuestion, GeneratedMockExam, AnkiCard, StudyUnit, ReviewPlanItem, SprintPlan
+from app.schemas.review import GeneratedExamQuestion, GeneratedMockExam, AnkiCard, StudyUnit, ReviewPlanItem, SprintPlan,PastExamAnalysis,PastExamFileAnalysis
 from app.services.stage_checkpoints import stable_hash
 from app.services.evidence_catalog import catalog_for, resolves
+from app.services.numeric_verification import verify
 
 
 def _text(value):
@@ -32,6 +33,11 @@ def _question_failure(question, allowed, concepts):
         return "observed_question_requires_extraction_verification"
     if not all(item.strip() for item in question.scoring_rubric):
         return "empty_rubric"
+    if question.reference_expression is not None:
+        if question.numeric_answer is None or not verify(question.reference_expression,question.numeric_answer,question.quantity_kind):
+            return "numeric_solution_inconsistent_or_unsupported"
+    if question.requires_diagram:
+        return "diagram_interpretation_not_verified"
     choice = question.options or re.search(r"choice|选择", question.question_type, re.I)
     if choice:
         if len(question.options) < 2 or len({_text(o) for o in question.options}) != len(question.options) or not all(o.strip() for o in question.options):
@@ -61,6 +67,7 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
         for index, item in enumerate(items):
             try:
                 question = Question.model_validate(item)
+                question.knowledge_ids = [course.concept_id_aliases.get(value,value) for value in question.knowledge_ids]
                 failure = _question_failure(question, allowed, concepts)
                 signature = _text(question.question)
                 if signature in seen:
@@ -84,6 +91,7 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
     for index, item in enumerate(cards if isinstance(cards, list) else []):
         try:
             card = RecallCard.model_validate(item)
+            card.knowledge_ids = [course.concept_id_aliases.get(value,value) for value in card.knowledge_ids]
             if not card.front.strip() or not card.back.strip() or not _refs_valid(card.source_refs, allowed) or not set(card.knowledge_ids).issubset(concepts):
                 raise ValueError("invalid_card_or_evidence")
             if _text(card.front) in seen_cards:
@@ -117,11 +125,13 @@ def project_artifacts(report, artifacts, intent):
     report.anki_cards = [AnkiCard.model_validate(card.model_dump()) for card in artifacts.recall_cards.cards]
     course = artifacts.course_model
     for index, draft in enumerate(artifacts.learning_material.units):
-        plan = artifacts.study_blueprint.units[index] if index < len(artifacts.study_blueprint.units) else {}
-        ids = set(plan.get("knowledge_ids", []))
+        plan = artifacts.study_blueprint.units[index].model_dump(mode="json") if index < len(artifacts.study_blueprint.units) else {}
+        ids = {course.concept_id_aliases.get(value,value) for value in plan.get("knowledge_ids", [])}
         concepts = [c for c in course.concepts if not ids or c.id in ids]
         report.study_units.append(StudyUnit(name=draft.title, key_points=[c.name for c in concepts],
             must_know=[c.definition for c in concepts if c.definition], how_to_review=plan.get("rationale", ""),
+            formulas_or_methods=[condition for c in concepts for condition in c.conditions],
+            pitfalls=[confusion for c in concepts for confusion in c.common_confusions],
             reason=plan.get("rationale", ""), priority=max(0, min(100, int(plan.get("priority", 50))))))
         report.review_order.append(ReviewPlanItem(chapter=draft.title, importance=report.study_units[-1].priority,
             reason=plan.get("rationale", "")))
@@ -142,3 +152,15 @@ def project_artifacts(report, artifacts, intent):
         report.sprint_plans = [SprintPlan(days=days, title=f"{days}-day plan / {intent['daily_minutes']} minutes per day", schedule=schedule)]
     report.overview["artifacts"] = artifacts.model_dump(mode="json")
     report.overview["artifact_fingerprint"] = stable_hash(artifacts.model_dump(mode="json"))
+    observed=report.overview.get("exam_model",{}).get("observed_questions",[])
+    files={}
+    for question in observed:
+        for ref in question.get("source_refs",[]):
+            filename=ref.get("filename","")
+            files.setdefault(filename,{"questions":set(),"types":set()})
+            files[filename]["questions"].add(question["question_id"])
+            files[filename]["types"].add(question.get("question_type","unknown"))
+    if files:
+        report.past_exam_analysis=PastExamAnalysis(
+            detected_files=[PastExamFileAnalysis(filename=name,confidence=0,question_count=len(value["questions"]),question_types=sorted(value["types"])) for name,value in files.items()],
+            summary=f"从用户标记的往年卷中识别 {len(observed)} 道去重候选题；题界和题型仍需核对，答案未经独立验证。未据此推算考试概率或历史年度频次。")

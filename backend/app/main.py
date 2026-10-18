@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import analyze, download, export, generate_review, generate_review_jobs_v31, llm, mock_exam, parse, review_projects, upload
+from app.routers import analyze, download, export, generate_review, generate_review_jobs_v31, llm, mock_exam, parse, review_projects, upload, learning
 from app.services.cloud_runtime import (
     cleanup_runtime_files,
     ensure_runtime_directories,
@@ -51,6 +51,7 @@ app.include_router(download.router, tags=["download"])
 app.include_router(analyze.router, prefix="/api/analyze", tags=["analyze"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(review_projects.router)
+app.include_router(learning.router)
 
 
 @app.get("/health")

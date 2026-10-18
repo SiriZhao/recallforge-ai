@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-PROMPT_VERSION = "learning-engine-p0.1"
+PROMPT_VERSION = "learning-engine-p0.2"
 
 
 class CheckpointWriteError(RuntimeError):

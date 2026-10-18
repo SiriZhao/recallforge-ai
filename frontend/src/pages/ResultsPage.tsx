@@ -8,10 +8,12 @@ import {RESULT_TABS,ResultTabs} from '../components/ResultTabs';
 import {Flashcards} from '../components/Flashcards';
 import {Questions} from '../components/Questions';
 import {KnowledgeMap} from '../components/KnowledgeMap';
+import {useLearningProgress} from '../hooks/useLearningProgress';
 
 export function ResultsPage({result,jobId,onSettings}: {result:GenerateReviewResponse;jobId?:string;onSettings:()=>void}) {
   const [tab,setTab]=useState(0);const [exporting,setExporting]=useState('');const [error,setError]=useState<UserFacingError|null>(null);
   const report=result.review_report;
+  const learning=useLearningProgress(jobId);
   async function download(path:string,format:string) {
     if(exporting)return;setExporting(format);setError(null);
     try {await downloadArtifact(jobId ? `/api/review/jobs/${encodeURIComponent(jobId)}/download/${format === 'csv' ? 'anki' : format}` : path,downloadFilename(path)||`${report.title}.${format}`);}
@@ -31,8 +33,8 @@ export function ResultsPage({result,jobId,onSettings}: {result:GenerateReviewRes
         <details className="report-details"><summary>生成质量与资料缺口</summary>{report.quality&&<><p>质量评分：{report.quality.quality_score} / 100</p>{[...report.quality.quality_warnings,...report.quality.quality_failures].map((item,i)=><p key={i}>{item}</p>)}</>}{report.insufficient_materials.map((item,i)=><p key={i}>{item}</p>)}{result.generation_summary&&<p>处理 {result.generation_summary.files_processed} 份文件，共 {result.generation_summary.pages_total} 页；OCR 识别 {result.generation_summary.pages_ocr_processed} 页。</p>}<p>生成内容用于辅助学习，请对照原始材料核对。</p></details>
       </>}
       {tab===1&&<KnowledgeMap report={report}/>}
-      {tab===2&&<Flashcards cards={report.anki_cards}/>}
-      {tab===3&&<Questions key="practice" questions={report.practice_questions ?? report.mock_exam.questions} mock={false}/>}
-      {tab===4&&<Questions key="mock" questions={report.mock_exam.questions} mock/>}
-    </article><aside className="result-aside"><Icon name="book" size={24}/><h3>本章学习路径</h3><p>理解概念，连接知识，<br/>再通过回忆和练习巩固。</p>{RESULT_TABS.map((label,i)=><button key={label} className={tab===i?'active':''} onClick={()=>setTab(i)}><span>0{i+1}</span>{label}<Icon name="arrow" size={14}/></button>)}<small>导出包含本次完整复习报告。<br/>练习题与模拟卷使用本次生成的题库。</small></aside></div></section>;
+      {tab===2&&<Flashcards cards={report.anki_cards} jobId={jobId}/>}
+      {tab===3&&<Questions key="practice" questions={report.practice_questions ?? report.mock_exam.questions} mock={false} jobId={jobId}/>}
+      {tab===4&&<Questions key="mock" questions={report.mock_exam.questions} mock jobId={jobId}/>}
+    </article><aside className="result-aside"><Icon name="book" size={24}/><h3>本章学习路径</h3><p>{learning.progress?.recommendation.items.length?learning.progress.recommendation.items.slice(0,3).map(item=>`${item.name}（${item.estimated_minutes} 分钟；掌握度估计 ${Math.round(item.mastery*100)}%）`).join(' → '):<>理解概念，连接知识，<br/>再通过回忆和练习巩固。</>}</p>{RESULT_TABS.map((label,i)=><button key={label} className={tab===i?'active':''} onClick={()=>setTab(i)}><span>0{i+1}</span>{label}<Icon name="arrow" size={14}/></button>)}<small>导出包含本次完整复习报告。<br/>练习题与模拟卷使用本次生成的题库。</small></aside></div></section>;
 }

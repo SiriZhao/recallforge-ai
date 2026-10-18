@@ -14,6 +14,10 @@ class Question(GeneratedExamQuestion):
     source_refs: list[SourceRef] = Field(min_length=1)
     provenance: Literal["OBSERVED", "INFERRED", "GENERATED"] = "GENERATED"
     quality_status: Literal["VALIDATED", "QUARANTINED"] = "QUARANTINED"
+    reference_expression: str | None = None
+    numeric_answer: float | None = None
+    quantity_kind: Literal["number", "probability"] = "number"
+    requires_diagram: bool = False
 
 
 class RecallCard(AnkiCard):
@@ -43,6 +47,12 @@ class MockExam(BaseModel):
 
 class RecallCardCollection(BaseModel):
     cards: list[RecallCard] = Field(default_factory=list)
+
+
+class GeneratedArtifactBundle(BaseModel):
+    practice_questions: list[Question] = Field(min_length=1)
+    mock_exam: MockExam
+    active_recall_cards: list[RecallCard] = Field(min_length=1)
 
 
 class QualityReport(BaseModel):

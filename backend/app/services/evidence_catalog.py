@@ -1,5 +1,6 @@
 """Resolve model references against extracted spans, not model-written citations."""
 from pydantic import BaseModel, Field
+import re
 from app.schemas.course_model import SourceRef
 from app.services.stage_checkpoints import stable_hash
 
@@ -34,13 +35,20 @@ def catalog_for(parsed_files):
 
 
 def resolves(ref: SourceRef, spans: list[EvidenceSpan]) -> bool:
+    def anchor_key(value):
+        return re.sub(r"\s+", "", value).casefold()
+    def text_key(value):
+        return re.sub(r"\s+", " ", value).strip()
     for span in spans:
         source = span.source
-        if ref.anchor != source.anchor:
+        explicit_location = bool((ref.document_id or ref.filename) and (ref.page is not None or ref.slide is not None))
+        if ref.anchor and anchor_key(ref.anchor) != anchor_key(source.anchor):
+            continue
+        if not ref.anchor and not explicit_location:
             continue
         if any(getattr(ref, field) not in (None, "", getattr(source, field)) for field in ("document_id", "filename", "page", "slide", "block_id")):
             continue
-        if ref.fragment and ref.fragment not in span.text:
+        if ref.fragment and text_key(ref.fragment) not in text_key(span.text):
             continue
         if (ref.text_start is None) != (ref.text_end is None):
             continue

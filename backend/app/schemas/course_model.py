@@ -29,6 +29,10 @@ class Concept(BaseModel):
     example_refs: list[str] = Field(default_factory=list)
     source_refs: list[SourceRef] = Field(default_factory=list)
     confidence: float = Field(0.0, ge=0, le=1)
+    basis: Literal["OBSERVED", "INFERRED", "INSUFFICIENT"] = "INFERRED"
+    conditions: list[str] = Field(default_factory=list)
+    mechanism: str = ""
+    examples: list[str] = Field(default_factory=list)
 
 class Relationship(BaseModel):
     source: str
@@ -51,6 +55,7 @@ class CourseModel(BaseModel):
     learning_objectives: list[dict] = Field(default_factory=list)
     exam_signals: list[dict] = Field(default_factory=list)
     uncertainties: list[str] = Field(default_factory=list)
+    concept_id_aliases: dict[str, str] = Field(default_factory=dict)
 
 
 class ChunkUnderstanding(BaseModel):
@@ -79,17 +84,27 @@ class ChunkUnderstanding(BaseModel):
     semantic_summary: str = ""
 
 
+class UnitPlan(BaseModel):
+    unit_id: str = ""
+    title: str
+    knowledge_ids: list[str] = Field(default_factory=list)
+    source_regions: list[str] = Field(default_factory=list)
+    priority: int = Field(default=50,ge=0,le=100)
+    rationale: str = ""
+    estimated_minutes: int = Field(default=15,ge=1,le=960)
+
+
 class StudyBlueprint(BaseModel):
     schema_version: Literal["4.0"] = "4.0"
     intent: dict = Field(default_factory=dict)
-    units: list[dict] = Field(default_factory=list)
+    units: list[UnitPlan] = Field(default_factory=list)
     priorities: list[str] = Field(default_factory=list)
     omitted_artifacts: list[str] = Field(default_factory=list)
     rationale: str = ""
 
 
 class UnitDraft(BaseModel):
-    unit_id: str
+    unit_id: str = Field(min_length=1)
     title: str
     markdown: str
     source_refs: list[SourceRef] = Field(default_factory=list)
