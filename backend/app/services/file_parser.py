@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+import hashlib
 import unicodedata
 
 from PIL import Image
@@ -72,6 +73,8 @@ def parse_file(
         warnings=warnings,
         ocr_cache_used=cache_used,
         document_structure=document_structure,
+        content_hash=hashlib.sha256(path.read_bytes()).hexdigest(),
+        original_filename=path.name,
     )
 
 
@@ -82,22 +85,33 @@ def parse_docx(path: Path) -> list[ParsedPage]:
         raise ParseError("未安装 python-docx。") from exc
 
     document = Document(path)
-    lines = [paragraph.text.strip() for paragraph in document.paragraphs]
-    text = "\n".join(line for line in lines if line)
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    lines = []
     anchor = source_anchor(path.name, path.suffix, 1)
     blocks: list[DocumentBlock] = []
-    for index, table in enumerate(document.tables, start=1):
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        blocks.append(
-            DocumentBlock(
-                block_id=f"p1-table-{index}",
-                type="table",
-                page_number=1,
-                source_anchor=anchor,
-                rows=rows,
-                metadata={"native": True},
-            )
-        )
+    # paragraphs and tables must follow the actual XML body order. Reading
+    # document.paragraphs then document.tables silently loses this relationship.
+    for index, element in enumerate(document.element.body, 1):
+        if element.tag == qn("w:p"):
+            value = Paragraph(element, document).text.strip()
+            if value:
+                lines.append(value)
+                blocks.append(DocumentBlock(block_id=f"p1-body-{index}", type="text", page_number=1,
+                    source_anchor=anchor, text=value, metadata={"body_index": index, "native": True}))
+            formulas = ["".join(node.itertext()) for node in element.iter(qn("m:oMath"))]
+            for formula_index, formula in enumerate(formulas, 1):
+                if formula.strip():
+                    lines.append(formula)
+                    blocks.append(DocumentBlock(block_id=f"p1-math-{index}-{formula_index}", type="formula", page_number=1,
+                        source_anchor=anchor, text=formula, metadata={"native": True, "representation": "OMML text; layout requires review"}))
+        elif element.tag == qn("w:tbl"):
+            table = Table(element, document)
+            rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+            lines.append("\n".join(" | ".join(row) for row in rows))
+            blocks.append(DocumentBlock(block_id=f"p1-table-{index}", type="table", page_number=1,
+                source_anchor=anchor, rows=rows, metadata={"body_index": index, "native": True}))
     for index, _shape in enumerate(document.inline_shapes, start=1):
         blocks.append(
             DocumentBlock(
@@ -108,7 +122,7 @@ def parse_docx(path: Path) -> list[ParsedPage]:
                 metadata={"native": True, "image_index": index},
             )
         )
-    return [ParsedPage(page_number=1, text=text, source="text_extract", blocks=blocks)]
+    return [ParsedPage(page_number=1, text="\n".join(lines), source="text_extract", blocks=blocks)]
 
 
 def parse_pptx(path: Path) -> list[ParsedPage]:
@@ -126,6 +140,7 @@ def parse_pptx(path: Path) -> list[ParsedPage]:
         for shape_index, shape in enumerate(slide.shapes, start=1):
             if getattr(shape, "has_table", False):
                 rows = [[cell.text.strip() for cell in row.cells] for row in shape.table.rows]
+                slide_text.append("\n".join(" | ".join(row) for row in rows))
                 blocks.append(
                     DocumentBlock(
                         block_id=f"p{index}-table-{shape_index}",
@@ -133,7 +148,7 @@ def parse_pptx(path: Path) -> list[ParsedPage]:
                         page_number=index,
                         source_anchor=anchor,
                         rows=rows,
-                        metadata={"native": True},
+                        metadata={"native": True, "left": int(shape.left), "top": int(shape.top), "width": int(shape.width), "height": int(shape.height)},
                     )
                 )
             if getattr(shape, "shape_type", None) == 13:
@@ -156,6 +171,7 @@ def parse_pptx(path: Path) -> list[ParsedPage]:
                 text="\n".join(slide_text),
                 source="text_extract",
                 blocks=blocks,
+                title=slide.shapes.title.text.strip() if slide.shapes.title is not None else None,
             )
         )
     return pages
@@ -201,6 +217,7 @@ def parse_pdf(
     pages: list[ParsedPage] = []
     warnings: list[str] = []
     total_pages = len(reader.pages)
+    outline_titles = pdf_outline_titles(reader)
     text_pages: dict[int, str] = {}
     image_counts: dict[int, int] = {}
     ocr_page_numbers: list[int] = []
@@ -211,7 +228,10 @@ def parse_pdf(
     for index, page in enumerate(reader.pages, start=1):
         if progress_callback:
             progress_callback(f"正在检查 PDF 文本层：第 {index}/{total_pages} 页", min(0.2, index / max(total_pages, 1) * 0.2))
-        text = (page.extract_text() or "").strip()
+        try:
+            text = (page.extract_text(extraction_mode="layout") or "").strip()
+        except TypeError:
+            text = (page.extract_text() or "").strip()
         try:
             image_counts[index] = len(getattr(page, "images", []) or [])
         except Exception:
@@ -232,6 +252,7 @@ def parse_pdf(
                 text=text_pages.get(index, ""),
                 source="text_extract",
                 blocks=pdf_image_blocks(path, index, image_counts.get(index, 0)),
+                title=outline_titles.get(index),
             )
             for index in range(1, total_pages + 1)
         ], warnings, False
@@ -267,6 +288,7 @@ def parse_pdf(
                     text=text_pages[index],
                     source="text_extract",
                     blocks=pdf_image_blocks(path, index, image_counts.get(index, 0)),
+                    title=outline_titles.get(index),
                 )
             )
         elif index in ocr_text_by_page:
@@ -278,6 +300,7 @@ def parse_pdf(
                     source="ocr_fallback",
                     warning=warning,
                     blocks=pdf_image_blocks(path, index, image_counts.get(index, 0)),
+                    title=outline_titles.get(index),
                 )
             )
         else:
@@ -287,6 +310,27 @@ def parse_pdf(
         save_ocr_cache(path, ocr_config, pages, page_count=total_pages)
 
     return pages, warnings, False
+
+
+def pdf_outline_titles(reader) -> dict[int, str]:
+    titles = {}
+    def visit(items):
+        for item in items:
+            if isinstance(item, list):
+                visit(item)
+                continue
+            try:
+                page = reader.get_destination_page_number(item)
+                title = str(getattr(item, "title", "")).strip()
+                if page is not None and title:
+                    titles.setdefault(page + 1, title)
+            except (ValueError, KeyError, AttributeError):
+                continue
+    try:
+        visit(getattr(reader, "outline", []))
+    except (ValueError, KeyError, AttributeError):
+        pass
+    return titles
 
 
 def native_pdf_text_is_reliable(text: str) -> bool:

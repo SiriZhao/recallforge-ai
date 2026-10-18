@@ -6,6 +6,7 @@ from app.schemas.learning_artifacts import (
 )
 from app.schemas.review import GeneratedExamQuestion, GeneratedMockExam, AnkiCard, StudyUnit, ReviewPlanItem, SprintPlan
 from app.services.stage_checkpoints import stable_hash
+from app.services.evidence_catalog import catalog_for, resolves
 
 
 def _text(value):
@@ -13,7 +14,7 @@ def _text(value):
 
 
 def _refs_valid(refs, allowed):
-    return bool(refs) and all(ref.anchor in allowed for ref in refs)
+    return bool(refs) and all(resolves(ref, allowed) for ref in refs)
 
 
 def _question_failure(question, allowed, concepts):
@@ -43,11 +44,7 @@ def _question_failure(question, allowed, concepts):
 
 
 def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
-    allowed = {ref for p in parsed_files for ref in (
-        [page.source_anchor for page in p.pages if page.source_anchor]
-        + ([s.source_anchor for s in p.document_structure.sections] if p.document_structure else [])
-        + ([b.source_anchor for b in p.document_structure.blocks] if p.document_structure else [])
-    )}
+    allowed = catalog_for(parsed_files)
     concepts = {c.id for c in course.concepts}
     artifacts = LearningArtifacts(course_model=course, study_blueprint=blueprint,
         knowledge_graph=KnowledgeGraph(nodes=[c.model_dump(mode="json") for c in course.concepts], edges=[r.model_dump(mode="json") for r in course.relationships]),
@@ -95,6 +92,12 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
         quality.failures.append("missing_valid_recall_cards")
     if not course.concepts:
         quality.failures.append("missing_knowledge_graph")
+    for concept in course.concepts:
+        if not _refs_valid(concept.source_refs, allowed):
+            quality.failures.append(f"unresolved_concept_source:{concept.id}")
+    for relation in course.relationships:
+        if relation.source not in concepts or relation.target not in concepts or not _refs_valid(relation.source_refs, allowed):
+            quality.failures.append(f"unresolved_relationship:{relation.source}:{relation.target}")
     if any(draft.status != "READY" for draft in drafts):
         quality.failures.append("incomplete_learning_units")
     if quality.failures or quality.quarantined:

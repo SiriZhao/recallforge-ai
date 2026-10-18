@@ -43,3 +43,22 @@ Remaining work: richer extraction and provenance verification, critic/repair,
 budgeted synthesis, assessment and mastery persistence, subject validators and
 fair blinded evaluation. Main CI remains unchanged until a reviewed merge; this
 branch must pass CI independently. Main is not automatically merged.
+
+## Extraction and evidence foundations
+
+P0 branch CI run 39135039382: backend and frontend both succeeded on GitHub.
+
+Fixed DOCX paragraph/table interleaving and included native table text in PPTX
+generation input. Preserved DOCX OMML text with a representation warning;
+captured PPT titles/table geometry, PDF layout extraction and bookmark titles.
+Uninterpreted images now produce explicit page warnings. Repeated heading text
+is excluded from chapter events; processing windows are explicitly labeled as
+processing windows, not semantic chapter discoveries.
+
+Added evidence spans with document/block/page/slide identities, hashes, extraction
+warnings and confidence. Citation resolution checks document/name/page/block,
+quoted fragments and text positions against extracted source text. This confirms
+reference resolution, not semantic entailment. Full backend: 130 passed, 1 skipped.
+
+Not yet verified: broad multi-column PDF recovery, chart/diagram interpretation,
+semantic concept normalization and relation correctness on real courses.

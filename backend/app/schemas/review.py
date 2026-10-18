@@ -66,6 +66,7 @@ class DocumentSection(BaseModel):
     page_end: int
     block_ids: list[str] = Field(default_factory=list)
     source_anchor: str
+    basis: Literal["heading", "bookmark", "document", "processing_window"] = "heading"
 
 
 class DocumentStructure(BaseModel):
@@ -101,6 +102,8 @@ class ParsedFile(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     ocr_cache_used: bool = False
     document_structure: DocumentStructure | None = None
+    content_hash: str = ""
+    original_filename: str = ""
 
 
 class ParseResponse(BaseModel):

@@ -23,6 +23,7 @@ from app.services.study_unit_prompt import estimate_study_unit_prompt_tokens
 from app.services.stage_checkpoints import StageRunner, stable_hash, CheckpointWriteError
 from app.services.learning_context import learning_constraints, MATERIAL_POLICIES
 from app.services.artifact_validation import build_artifacts, project_artifacts
+from app.services.evidence_catalog import catalog_for
 
 
 logger = logging.getLogger(__name__)
@@ -606,6 +607,7 @@ def generate_hierarchical_report(
     source_metadata = [{"filename": p.filename, "document_id": p.document_structure.document_id if p.document_structure else stable_hash(p.path)[:24],
         "content_hash": stable_hash(p.model_dump(mode="json")),
         "role": (material_types or {}).get(p.path, (material_types or {}).get(p.filename, "other"))} for p in parsed_files]
+    evidence_catalog = [span.model_dump(mode="json") for span in catalog_for(parsed_files)]
     understanding: list[dict] = []
     errors: list[LLMErrorInfo] = []
     for index, chunk in enumerate(chunks, 1):
@@ -613,6 +615,7 @@ def generate_hierarchical_report(
             "chunk_id": chunk.chunk_id, "source_refs": chunk.source_anchors,
             "text": chunk.text, "intent": intent, "materials": source_metadata,
             "role_policies": MATERIAL_POLICIES,
+            "evidence_spans": [span for span in evidence_catalog if span["source"]["anchor"] in chunk.source_anchors],
         }
         try:
             def validate_chunk(data):
@@ -706,6 +709,7 @@ def generate_hierarchical_report(
         "optional_artifacts": optional_artifacts,
         "learner_context": intent,
         "materials": source_metadata,
+        "evidence_catalog": evidence_catalog,
     }
     report.insufficient_materials = [d.title for d in drafts if d.status != "READY"]
     artifacts = build_artifacts(course, blueprint, drafts, canonical, optional_artifacts, parsed_files)
