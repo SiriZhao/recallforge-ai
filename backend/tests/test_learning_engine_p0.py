@@ -39,6 +39,8 @@ class GroundedProvider:
             if self.fail_unit:
                 raise RuntimeError("synthetic interruption")
             return {"markdown": "## Membrane\nThe membrane controls transport [synthetic.txt, p. 1].", "source_refs": [ref]}
+        if stage == "unit_critic":
+            return {"verdict": "READY", "claims": [{"claim": "Membrane controls transport", "basis": "SUPPORTED", "source_refs": [ref]}]}
         return {"canonical_markdown": "# Membrane\nThe membrane controls transport [synthetic.txt, p. 1]."}
 
 
@@ -76,11 +78,11 @@ def test_every_successful_stage_is_reused_and_failed_unit_recovers(monkeypatch):
     second = GroundedProvider()
     resumed, stats = run(monkeypatch, second, checkpoints=saved, callback=callback)
     assert resumed.llm_status == "success"
-    assert [name for name, _ in second.calls] == ["unit_draft", "course_synthesis"]
+    assert [name for name, _ in second.calls] == ["unit_draft", "unit_critic", "course_synthesis"]
     assert stats.resumed_checkpoints == 4
     third = GroundedProvider()
     _, stats = run(monkeypatch, third, checkpoints=saved, callback=callback)
-    assert not third.calls and stats.resumed_checkpoints == 6
+    assert not third.calls and stats.resumed_checkpoints == 7
 
 
 def test_invalid_questions_are_quarantined_and_not_cached_as_success(monkeypatch):
@@ -157,6 +159,9 @@ def test_job_leases_prevent_duplicate_work_and_recover_interruption(monkeypatch,
     recovered, resumed = store.create_or_resume("after-crash", payload)
     assert recovered == job_id and resumed
     assert store.claim_job(job_id, "new-worker")
+    assert store.load_checkpoints(job_id)["completed-stage"]["content"] == {"kept": True}
+    with store.owned_job("worker-one"), pytest.raises(RuntimeError, match="GENERATION_LEASE_LOST"):
+        store.save_checkpoint(job_id, "completed-stage", 0, 0, "completed", {"kept": False}, None, None)
     assert store.load_checkpoints(job_id)["completed-stage"]["content"] == {"kept": True}
 
 

@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,26 @@ from app.config import settings
 
 
 TERMINAL_RESUMABLE = {"retryable_failed", "partial", "failed"}
+_job_owner = ContextVar("generation_job_owner", default=None)
+
+
+@contextmanager
+def owned_job(owner: str):
+    token = _job_owner.set(owner)
+    try:
+        yield
+    finally:
+        _job_owner.reset(token)
+
+
+def _assert_job_owner(connection, job_id):
+    owner = _job_owner.get()
+    if owner is None:
+        return
+    connection.execute("BEGIN IMMEDIATE")
+    row = connection.execute("SELECT lease_owner FROM generation_jobs WHERE job_id=?", (job_id,)).fetchone()
+    if not row or row["lease_owner"] != owner:
+        raise RuntimeError("GENERATION_LEASE_LOST: superseded worker cannot persist output")
 
 
 def database_path() -> Path:
@@ -232,6 +253,7 @@ def update_job(
 ) -> None:
     now = datetime.now().isoformat(timespec="seconds")
     with connection_scope() as connection:
+        _assert_job_owner(connection, job_id)
         connection.execute(
             """
             UPDATE generation_jobs SET status=?, progress=?, message=?,
@@ -255,6 +277,7 @@ def update_job(
 
 def save_parsed(job_id: str, parsed_files: list[dict]) -> None:
     with connection_scope() as connection:
+        _assert_job_owner(connection, job_id)
         connection.execute(
             "UPDATE generation_jobs SET parsed_json=?, updated_at=? WHERE job_id=?",
             (json.dumps(parsed_files, ensure_ascii=False), datetime.now().isoformat(timespec="seconds"), job_id),
@@ -270,6 +293,7 @@ def load_parsed(job_id: str) -> list[dict] | None:
 
 def save_checkpoint(job_id: str, key: str, chapter_index: int, chunk_index: int, status: str, content: dict | None, error_code: str | None, error_message: str | None) -> None:
     with connection_scope() as connection:
+        _assert_job_owner(connection, job_id)
         connection.execute(
             """
             INSERT INTO chapter_generation_checkpoints(

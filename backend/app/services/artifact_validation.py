@@ -51,6 +51,7 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
         learning_material=LearningMaterial(units=drafts, canonical_markdown=canonical))
     quality = artifacts.quality_report
     seen = set()
+    seen_ids = set()
     for collection, target in [("practice_questions", artifacts.question_bank.questions), ("mock_exam", artifacts.mock_exam.questions)]:
         items = raw.get(collection, [])
         if isinstance(items, dict):
@@ -64,9 +65,12 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
                 signature = _text(question.question)
                 if signature in seen:
                     failure = "duplicate_question_or_practice_exam_overlap"
+                if question.question_id in seen_ids:
+                    failure = "duplicate_question_id"
                 if failure:
                     raise ValueError(failure)
                 seen.add(signature)
+                seen_ids.add(question.question_id)
                 question.quality_status = "VALIDATED"
                 target.append(question)
             except (ValidationError, ValueError, TypeError) as exc:

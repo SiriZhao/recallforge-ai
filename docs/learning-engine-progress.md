@@ -62,3 +62,28 @@ reference resolution, not semantic entailment. Full backend: 130 passed, 1 skipp
 
 Not yet verified: broad multi-column PDF recovery, chart/diagram interpretation,
 semantic concept normalization and relation correctness on real courses.
+
+## Teaching quality foundations
+
+Connected a model-driven per-unit critic with explicit claim basis and resolvable
+citations. A defective unit receives at most one targeted repair and is reviewed
+again. Rejected repair keeps the original unit as NEEDS_REPAIR and generation as
+partial. Successful unit/critic/repair stages are independently checkpointed.
+Added bounded fan-in synthesis: intermediate summaries are cached, oversized
+requests are rejected explicitly, and no source text is silently truncated.
+Coverage manifest checks concept name/alias presence (not factual correctness).
+
+Full backend: 133 passed, 1 skipped. Focused final regression: 13 passed. New tests
+exercise actual critic -> repair -> critic orchestration, bounded repair failure,
+and synthesis batching/context failure.
+
+Added ownership guards so an expired/superseded worker cannot overwrite a new
+worker's parsed data, checkpoint or final result. This is tested against the
+SQLite lease recovery path. No CSS/layout files were modified.
+
+Real-course evaluation now takes priority once the user supplies the authorized
+local folder and gold answers. No API key has been requested in chat or read into
+logs. No paid requests have been sent. User requires a separate budget approval
+before even connection/smoke calls. Missing/unreliable gold answers must remain
+UNVERIFIED; model-written answers cannot become ground truth. A/B arms must use
+the same explicit DeepSeek model version, source subset, goals and total budget.

@@ -152,7 +152,8 @@ def _run_job(job_id: str, request: GenerateReviewRequest) -> None:
     worker = Thread(target=heartbeat, daemon=True)
     worker.start()
     try:
-        _execute_job(job_id, request)
+        with generation_store.owned_job(owner):
+            _execute_job(job_id, request)
     finally:
         stopped.set()
         worker.join(timeout=1)
