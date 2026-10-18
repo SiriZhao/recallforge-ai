@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import time
 
 from app.config import settings
 
@@ -83,10 +84,19 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    # Additive migration: existing jobs, parsed material and checkpoints stay
+    # readable. A lease permits recovery after process death without storing keys.
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(generation_jobs)")}
+    for name, kind in (("lease_owner", "TEXT"), ("lease_expires", "REAL")):
+        if name not in columns:
+            connection.execute(f"ALTER TABLE generation_jobs ADD COLUMN {name} {kind}")
     connection.commit()
 
 
 def request_fingerprint(payload: dict[str, Any]) -> str:
+    from app.services.stage_checkpoints import PROMPT_VERSION
+    from app.services.upload_resolver import resolve_uploaded_file, UploadResolveError
+
     stable = {
         key: value
         for key, value in payload.items()
@@ -99,6 +109,22 @@ def request_fingerprint(payload: dict[str, Any]) -> str:
         "base_url": llm.get("base_url"),
         "enabled": llm.get("enabled"),
     }
+    stable["prompt_version"] = PROMPT_VERSION
+    stable["ocr_config"] = {key: value for key, value in (payload.get("ocr_config") or {}).items() if key not in {"api_key", "secret_key"}}
+    content_hashes = {}
+    for ref in payload.get("files", []):
+        try:
+            path = resolve_uploaded_file(ref)
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            content_hashes[ref] = digest.hexdigest()
+        except (UploadResolveError, OSError):
+            # Missing input is rejected by the parser. Never reuse a prior
+            # readable file fingerprint after deletion or loss of access.
+            content_hashes[ref] = "unavailable"
+    stable["input_content_hashes"] = content_hashes
     encoded = json.dumps(stable, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -118,26 +144,30 @@ def create_or_resume(job_id: str, payload: dict[str, Any]) -> tuple[str, bool]:
     fingerprint = request_fingerprint(payload)
     project_id = payload.get("project_id")
     with connection_scope() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         # A project-backed request is the normal UI path, but the public API
         # also supports generation without a project. Both need resumable
         # checkpoints; treating a NULL project id as "never resume" would
         # silently re-run parsing/OCR for those callers.
         existing = connection.execute(
             """
-            SELECT job_id, status FROM generation_jobs
+            SELECT job_id, status, lease_expires FROM generation_jobs
             WHERE request_fingerprint=?
               AND (project_id=? OR (project_id IS NULL AND ? IS NULL))
             ORDER BY updated_at DESC LIMIT 1
             """,
             (fingerprint, project_id, project_id),
         ).fetchone()
-        if existing and existing["status"] in TERMINAL_RESUMABLE:
+        active = {"pending", "retrying", "parsing", "ocr", "building_evidence", "llm", "validating"}
+        if existing and existing["status"] in active and (existing["lease_expires"] or 0) > time.time():
+            return str(existing["job_id"]), True
+        if existing and (existing["status"] in TERMINAL_RESUMABLE or existing["status"] in active):
             connection.execute(
                 """
                 UPDATE generation_jobs
                 SET status='retrying', progress=1, message='Resuming from saved checkpoint.',
                     error_code=NULL, error_message=NULL, retryable=0,
-                    retry_count=retry_count+1, request_json=?, updated_at=?
+                    retry_count=retry_count+1, request_json=?, updated_at=?, lease_owner=NULL, lease_expires=NULL
                 WHERE job_id=?
                 """,
                 (json.dumps(sanitized_request(payload), ensure_ascii=False), now, existing["job_id"]),
@@ -165,6 +195,28 @@ def create_or_resume(job_id: str, payload: dict[str, Any]) -> tuple[str, bool]:
         )
         connection.commit()
     return job_id, False
+
+
+def claim_job(job_id: str, owner: str) -> bool:
+    with connection_scope() as connection:
+        cursor = connection.execute(
+            "UPDATE generation_jobs SET lease_owner=?, lease_expires=? WHERE job_id=? AND status IN ('pending', 'retrying') AND (lease_owner IS NULL OR lease_expires < ?)",
+            (owner, time.time() + 120, job_id, time.time()),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+
+
+def renew_lease(job_id: str, owner: str) -> None:
+    with connection_scope() as connection:
+        connection.execute("UPDATE generation_jobs SET lease_expires=? WHERE job_id=? AND lease_owner=?", (time.time() + 120, job_id, owner))
+        connection.commit()
+
+
+def release_lease(job_id: str, owner: str) -> None:
+    with connection_scope() as connection:
+        connection.execute("UPDATE generation_jobs SET lease_owner=NULL, lease_expires=NULL WHERE job_id=? AND lease_owner=?", (job_id, owner))
+        connection.commit()
 
 
 def update_job(

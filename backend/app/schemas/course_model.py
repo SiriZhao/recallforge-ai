@@ -3,6 +3,11 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 class SourceRef(BaseModel):
+    document_id: str = ""
+    filename: str = ""
+    block_id: str | None = None
+    text_start: int | None = Field(default=None, ge=0)
+    text_end: int | None = Field(default=None, ge=0)
     page: int | None = None
     slide: int | None = None
     section: str | None = None
@@ -89,4 +94,4 @@ class UnitDraft(BaseModel):
     markdown: str
     source_refs: list[SourceRef] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
-    status: Literal["READY", "PARTIAL", "NEEDS_RETRY", "FAILED"] = "READY"
+    status: Literal["READY", "PARTIAL", "NEEDS_RETRY", "NEEDS_REPAIR", "FAILED"] = "READY"

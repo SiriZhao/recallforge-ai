@@ -146,16 +146,19 @@ def build_generate_review_response(
         ParsedFile.model_validate(item) for item in (parsed_files_checkpoint or [])
     ]
     total_files = len(request.files)
-    for file_index, file_ref in enumerate([] if parsed_files else request.files, start=1):
+    from pathlib import Path
+    parsed_by_path = {str(Path(item.path).resolve()): item for item in parsed_files}
+    for file_index, file_ref in enumerate(request.files, start=1):
         try:
+            path = resolve_uploaded_file(file_ref)
+            if str(path.resolve()) in parsed_by_path:
+                continue
             if progress_callback:
                 progress_callback(
                     10 + int(((file_index - 1) / max(total_files, 1)) * 45),
                     f"正在解析第 {file_index}/{total_files} 个文件。本地 OCR 处理扫描 PDF 可能较慢，请耐心等待。",
                 )
             logger.info("Generate-review parse started: file_ref=%s", file_ref)
-            path = resolve_uploaded_file(file_ref)
-
             def parse_progress(message: str, ratio: float | None) -> None:
                 if not progress_callback:
                     return
@@ -167,6 +170,13 @@ def build_generate_review_response(
                 parsed_files.append(parse_file(path, request.ocr_config, parse_progress))
             else:
                 parsed_files.append(parse_file(path, request.ocr_config))
+            # Persist after each successful file so a later OCR failure does
+            # not discard already verified parsing work.
+            if parsed_callback:
+                try:
+                    parsed_callback([item.model_dump(mode="json") for item in parsed_files])
+                except Exception as exc:
+                    raise RuntimeError("GENERATION_PERSIST_ERROR: parsed material checkpoint could not be saved") from exc
             logger.info("Generate-review parse completed: file_ref=%s", file_ref)
         except UploadedFileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -229,8 +239,12 @@ def build_generate_review_response(
             progress_callback=progress_callback, study_goal=request.study_goal,
             exam_type=request.exam_type, detail_level=request.detail_level,
             output_style=request.output_style, title=report_title,
+            learner_context=request.model_dump(include={"exam_date", "daily_minutes", "mastery_level", "target_score", "focus", "learning_mode"}),
+            material_types=request.material_types,
         )
     except Exception as exc:
+        if "GENERATION_PERSIST_ERROR" in str(exc):
+            raise
         if not llm_config.enabled:
             raise
         logger.warning("AI pipeline failed; entering explicit Basic Offline Review fallback: %s", str(exc)[:200])
@@ -243,7 +257,7 @@ def build_generate_review_response(
         from app.services.llm_service import LLMEnhancementResult
         llm_result = LLMEnhancementResult(
             report=fallback, report_source="rule_based_with_llm_failed", llm_status="failed",
-            fallback_used=True, llm_error=None, llm_context_strategy="failed",
+            fallback_used=True, llm_error=getattr(exc, "error", None), llm_context_strategy="failed",
         )
         pipeline_stats = type("FallbackStats", (), {"chunk_count": 0})()
     report = llm_result.report

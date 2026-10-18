@@ -246,6 +246,7 @@ export type ReviewReport = {
     reason: string;
   }>;
   sprint_plans: SprintPlan[];
+  practice_questions?: GeneratedExamQuestion[];
   mock_exam: {
     title: string;
     questions: GeneratedExamQuestion[];
@@ -301,6 +302,13 @@ export type GenerateReviewParams = {
   export_formats?: ExportFormat[];
   title: string;
   course_name?: string;
+  exam_date?: string;
+  daily_minutes?: number;
+  mastery_level?: string;
+  target_score?: string;
+  focus?: string;
+  learning_mode?: string;
+  material_types?: Record<string, string>;
   study_goal?: StudyGoal;
   exam_type?: ExamType;
   detail_level?: DetailLevel;

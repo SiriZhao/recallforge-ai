@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
 from uuid import uuid4
+from threading import Event, Thread
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -138,6 +139,27 @@ def _validate_export(path: Path, export_format: str) -> None:
 
 
 def _run_job(job_id: str, request: GenerateReviewRequest) -> None:
+    owner = uuid4().hex
+    if not generation_store.claim_job(job_id, owner):
+        return
+    stopped = Event()
+    def heartbeat():
+        while not stopped.wait(30):
+            try:
+                generation_store.renew_lease(job_id, owner)
+            except Exception:
+                diagnostic("job_lease_renewal_failed", job_id=job_id)
+    worker = Thread(target=heartbeat, daemon=True)
+    worker.start()
+    try:
+        _execute_job(job_id, request)
+    finally:
+        stopped.set()
+        worker.join(timeout=1)
+        generation_store.release_lease(job_id, owner)
+
+
+def _execute_job(job_id: str, request: GenerateReviewRequest) -> None:
     started = time.perf_counter()
     diagnostic(
         "job_started",
@@ -174,7 +196,7 @@ def _run_job(job_id: str, request: GenerateReviewRequest) -> None:
             # Export remains a separate, repeatable endpoint operation.
             defer_exports=True,
         )
-        partial = result.llm_status == "failed" and result.review_report is not None
+        partial = result.llm_status in {"partial", "failed"} and result.review_report is not None
         error_code = result.llm_error.code if partial and result.llm_error else None
         retryable = bool(
             partial
@@ -235,6 +257,8 @@ def _classify_error(message: str) -> str:
         "LLM_CONTEXT_EXCEEDED",
         "LLM_TIMEOUT",
         "LLM_RESPONSE_PARSE_ERROR",
+        "LLM_STAGE_FAILED",
+        "QUALITY_FAILED",
         "PROVIDER_RATE_LIMIT",
         "PROVIDER_QUOTA_EXCEEDED",
         "LLM_PROVIDER_ERROR",
@@ -250,6 +274,8 @@ def _classify_error(message: str) -> str:
 
 def _retryable(code: str) -> bool:
     return code in {
+        "LLM_STAGE_FAILED",
+        "QUALITY_FAILED",
         "LLM_OUTPUT_TRUNCATED",
         "LLM_CONTEXT_EXCEEDED",
         "LLM_TIMEOUT",

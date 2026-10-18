@@ -83,7 +83,9 @@ def test_blueprint_can_rename_merge_split_and_omit_irrelevant_modules(monkeypatc
     result, _ = pipeline.generate_hierarchical_report(_parsed(FIXTURES["concept"]), None, LLMConfig(enabled=True, provider="openai"), job_id="freedom", title="Freedom", study_goal="balanced", exam_type="unknown")
     titles = [unit["title"] for unit in result.report.overview["blueprint"]["units"]]
     assert titles == ["Merged foundations", "Oversized chapter: principles", "Oversized chapter: applications"]
-    assert "optional_artifacts" not in [stage for stage, _ in provider.calls]
+    # Blueprint freedom does not leave the other four result tabs unpopulated:
+    # structured artifacts are requested independently of unit organization.
+    assert "optional_artifacts" in [stage for stage, _ in provider.calls]
 
 
 def test_targeted_unit_repair_does_not_rewrite_course(monkeypatch):
@@ -99,7 +101,7 @@ def test_optional_artifacts_are_goal_driven_and_provenance_labeled(monkeypatch):
     monkeypatch.setattr(pipeline, "get_llm_provider", lambda _: provider)
     result, _ = pipeline.generate_hierarchical_report(_parsed(FIXTURES["exam"]), None, LLMConfig(enabled=True, provider="openai"), job_id="practice", title="Exam evidence", study_goal="past_exam_focused", exam_type="closed_book")
     call = next(payload for stage, payload in provider.calls if stage == "optional_artifacts")
-    assert set(call["payload"]["requested"]) == {"practice_questions", "mock_exam"}
+    assert set(call["payload"]["requested"]) == {"active_recall_cards", "practice_questions", "mock_exam"}
     assert "OBSERVED" in call["payload"]["instruction"]
     assert "INFERRED" in call["payload"]["instruction"]
     assert "GENERATED" in call["payload"]["instruction"]

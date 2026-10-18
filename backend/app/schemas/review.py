@@ -224,6 +224,12 @@ class GenerateReviewRequest(BaseModel):
     detail_level: DetailLevel = "detailed"
     output_style: OutputStyle = "teaching_assistant"
     material_types: dict[str, str] = Field(default_factory=dict)
+    exam_date: str = ""
+    daily_minutes: int = Field(default=90, ge=15, le=960)
+    mastery_level: str = "forgotten"
+    target_score: str = ""
+    focus: str = ""
+    learning_mode: str = ""
     ocr_config: OCRConfig = Field(default_factory=OCRConfig)
     llm_config: LLMConfig = Field(default_factory=LLMConfig)
     enable_chunked_llm: bool = True
@@ -395,6 +401,7 @@ class ReviewReport(BaseModel):
     review_order: list[ReviewPlanItem] = Field(default_factory=list)
     sprint_plans: list[SprintPlan] = Field(default_factory=list)
     mock_exam: GeneratedMockExam = Field(default_factory=GeneratedMockExam)
+    practice_questions: list[GeneratedExamQuestion] = Field(default_factory=list)
     anki_cards: list[AnkiCard] = Field(default_factory=list)
     high_frequency_points: list[str] = Field(default_factory=list)
     sprint_checklist: list[str] = Field(default_factory=list)

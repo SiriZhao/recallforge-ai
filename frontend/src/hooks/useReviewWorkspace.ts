@@ -118,6 +118,9 @@ export function useReviewWorkspace() {
       const created=await createGenerateReviewJob({
         files:materials.map(f => f.saved_filename), project_id:project.id, title:project.course_name, course_name:project.course_name,
         exam_type:form.exam_type,study_goal:selected.goal,output_style:selected.style,detail_level:'detailed',
+        exam_date:form.exam_date,daily_minutes:form.daily_minutes,mastery_level:form.mastery_level,
+        target_score:form.target_score,focus:form.focus,learning_mode:mode,
+        material_types:Object.fromEntries(materials.map(file=>[file.saved_filename,file.role])),
         export_format:'md',enable_chunked_llm:true,retry_on_context_too_long:true,
         ocr_config:{provider:'rapidocr',mode:'fast',language:'chi_sim+eng'},
         llm_config:{...llm,enabled:Boolean(llm.api_key?.trim())},

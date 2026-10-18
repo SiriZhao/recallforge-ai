@@ -153,6 +153,15 @@ def test_pdf_short_text_page_uses_ocr_fallback(tmp_path: Path, monkeypatch) -> N
 
 
 def test_windows_subprocess_kwargs_hide_console(monkeypatch) -> None:
+    # Linux has no Win32 subprocess objects. Supply the platform API only on
+    # those hosts; Windows runners still exercise the real STARTUPINFO class.
+    import subprocess
+    from types import SimpleNamespace
+
+    if not hasattr(subprocess, "STARTUPINFO"):
+        monkeypatch.setattr(subprocess, "STARTUPINFO", lambda: SimpleNamespace(dwFlags=0), raising=False)
+        monkeypatch.setattr(subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+        monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     monkeypatch.setattr("app.services.subprocess_utils.sys.platform", "win32")
 
     kwargs = subprocess_no_window_kwargs()

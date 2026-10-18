@@ -66,7 +66,8 @@ describe('RecallForge product workflow',()=>{
     await screen.findByRole('button',{name:'查看学习内容'});
     expect(reviewUpload).toHaveBeenCalledWith('/projects/p1/upload',[expect.any(File)]);
     expect(reviewApi).toHaveBeenCalledWith('/projects/p1/files/f1','PATCH',{role:'past_exam'});
-    expect(createGenerateReviewJob).toHaveBeenCalledWith(expect.objectContaining({files:['saved.pdf'],export_format:'md',study_goal:'one_day_sprint'}));
+    expect(createGenerateReviewJob).toHaveBeenCalledWith(expect.objectContaining({files:['saved.pdf'],export_format:'md',study_goal:'one_day_sprint',
+      exam_date:'',daily_minutes:90,mastery_level:'forgotten',target_score:'',focus:'',learning_mode:'cram',material_types:{'saved.pdf':'past_exam'}}));
     expect(vi.mocked(createGenerateReviewJob).mock.calls[0][0]).not.toHaveProperty('export_formats');
     fireEvent.click(screen.getByRole('button',{name:'查看学习内容'}));
     expect(screen.getByText('真实接口返回的总结')).toBeInTheDocument();

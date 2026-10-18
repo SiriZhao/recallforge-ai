@@ -32,7 +32,7 @@ export function ResultsPage({result,jobId,onSettings}: {result:GenerateReviewRes
       </>}
       {tab===1&&<KnowledgeMap report={report}/>}
       {tab===2&&<Flashcards cards={report.anki_cards}/>}
-      {tab===3&&<Questions key="practice" questions={report.mock_exam.questions} mock={false}/>}
+      {tab===3&&<Questions key="practice" questions={report.practice_questions ?? report.mock_exam.questions} mock={false}/>}
       {tab===4&&<Questions key="mock" questions={report.mock_exam.questions} mock/>}
     </article><aside className="result-aside"><Icon name="book" size={24}/><h3>本章学习路径</h3><p>理解概念，连接知识，<br/>再通过回忆和练习巩固。</p>{RESULT_TABS.map((label,i)=><button key={label} className={tab===i?'active':''} onClick={()=>setTab(i)}><span>0{i+1}</span>{label}<Icon name="arrow" size={14}/></button>)}<small>导出包含本次完整复习报告。<br/>练习题与模拟卷使用本次生成的题库。</small></aside></div></section>;
 }
