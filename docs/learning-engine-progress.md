@@ -343,3 +343,18 @@ the engine. Both arms' existing references resolve, but independently assessed
 coverage, answer correctness and blind teaching ratings remain unavailable.
 No superiority or 95% coverage claim is made. Cached analysis incurred no API
 calls; the global spend upper bound remains USD 0.3782982, zero uncertain calls.
+
+## Budget-preserving real regression preparation
+
+The evaluation adapter now respects the pipeline's requested output ceiling.
+For new requests it can fit a stage into the remaining shared per-arm 30k output
+allowance; it does not reset the global ledger, increase a cap, erase an uncertain
+reservation or bill an exact cache hit again. Fake-transport tests cover these
+boundaries. The default raw client behavior remains fail-closed rather than fit.
+
+A separate cached-critic audit replays the exact-quotation gate without relabeling
+the original run or inferring factual truth. It selects the final review for each
+unit and exports only aggregate counts; all private text stays local. The original
+two-unit botany run passes zero units under this narrow audit, with insufficient
+or missing-reference claims retained, not removed to make the result succeed.
+Backend full suite: 193 passed / 1 skipped. Chemical-phase PR CI 39246717965 passed.

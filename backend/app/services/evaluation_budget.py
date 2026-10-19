@@ -44,7 +44,7 @@ class EvaluationClient:
         return {"limit_usd": self.limit, "accounted_upper_usd": sum(r[3] if r[3] is not None else r[2] for r in rows),
                 "requests": len(rows), "uncertain_requests": sum(r[1] != "completed" for r in rows)}
 
-    def chat(self, arm, messages, max_tokens=3000, *, call_limit=16):
+    def chat(self, arm, messages, max_tokens=3000, *, call_limit=16, fit_output_budget=False):
         body = {"model": self.model, "messages": messages, "temperature": 0.3,
                 "thinking": {"type": "disabled"}, "max_tokens": max_tokens,"response_format":{"type":"json_object"}}
         encoded = json.dumps(body, ensure_ascii=False, sort_keys=True)
@@ -65,6 +65,19 @@ class EvaluationClient:
             prior_usage = [json.loads(row[0]).get("usage", {}) for row in db.execute("SELECT response_json FROM evaluation_calls WHERE arm=? AND status='completed'", (arm,))]
             used_input = sum(item.get("prompt_tokens", 0) for item in prior_usage)
             used_output = sum(item.get("completion_tokens", 0) for item in prior_usage)
+            if fit_output_budget and used_output + max_tokens > 30000:
+                # Only reduce a NEW request; original exact cache lookup above
+                # remains free. Never enlarge an arm's shared 30k-token budget.
+                max_tokens=30000-used_output
+                if max_tokens<256:
+                    raise EvaluationBudgetError('Insufficient remaining output for a useful stage')
+                body['max_tokens']=max_tokens
+                encoded=json.dumps(body,ensure_ascii=False,sort_keys=True)
+                identity=hashlib.sha256((arm+encoded).encode()).hexdigest()
+                input_bound=len(encoded.encode())+1024
+                reserved=(input_bound*self.input_rate+max_tokens*self.output_rate)/1_000_000
+                saved=db.execute('SELECT status,response_json FROM evaluation_calls WHERE id=?',(identity,)).fetchone()
+                if saved and saved[0]=='completed':return json.loads(saved[1])
             if used_input + input_bound > 200000 or used_output + max_tokens > 30000:
                 raise EvaluationBudgetError("Common per-arm token budget reached")
             if spent + reserved > self.limit - 0.01 or arm_calls >= call_limit:
@@ -105,7 +118,8 @@ class BudgetedStageProvider:
     def generate_stage(self, stage, prompt, config, *, max_output_tokens):
         limits = {"chunk_understanding": 4200, "course_model": 12000, "study_blueprint": 3000,
                   "optional_artifacts": 6000, "unit_draft": 3500, "unit_critic": 4000, "unit_repair": 3500, "course_synthesis": 8192}
-        response = self.client.chat(self.arm, [{"role": "user", "content": prompt}], limits.get(stage, min(max_output_tokens,3000)))
+        limit=min(max_output_tokens,limits.get(stage,3000))
+        response = self.client.chat(self.arm, [{"role": "user", "content": prompt}], limit,fit_output_budget=True)
         if response["choices"][0].get("finish_reason") == "length":
             raise EvaluationBudgetError("Truncated stage output; cached for diagnosis, not accepted")
         return response["choices"][0]["message"]["content"]
