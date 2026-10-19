@@ -32,6 +32,7 @@ from app.services.course_reconstruction import normalize_course, subject_profile
 from app.services.exam_evidence import observed_exam_model, exam_blueprint
 from app.services.schema_corrections import apply_corrections
 from app.services.unit_scope import validate_plan_ids,course_view,scope_error
+from app.services.course_budget import reconstruct_course
 
 
 logger = logging.getLogger(__name__)
@@ -67,20 +68,40 @@ def build_chapter_sources(parsed_files: list[ParsedFile]) -> list[ChapterSource]
         selected, uses_major_sections = _select_chapter_sections(sections)
         if len(selected) > 1:
             selected = sorted(selected, key=lambda item: (item.page_start, item.page_end))
+            # Locate heading boundaries within a page, rather than copying the
+            # same whole page into every section or dropping its preamble.
+            boundaries=[]
+            for section in selected:
+                page=next((page for page in parsed.pages if page.page_number==section.page_start),None)
+                position=page.text.find(section.title) if page else -1
+                offset=page.text.rfind('\n',0,position)+1 if page and position>=0 else 0
+                boundaries.append((section.page_start,offset))
+            first=boundaries[0]
+            prefix=[]
+            heading_counts=Counter(section.page_start for section in sections)
+            toc_pages={number for number,count in heading_counts.items() if count>=3 and number<first[0]}
+            for page in parsed.pages:
+                if page.page_number>first[0]:break
+                if page.page_number in toc_pages:continue
+                text=page.text if page.page_number<first[0] else page.text[:first[1]]
+                if text.strip():prefix.append((page,text))
             for index, section in enumerate(selected):
-                page_end = (
-                    max(section.page_start, selected[index + 1].page_start - 1)
-                    if uses_major_sections and index + 1 < len(selected)
-                    else (len(parsed.pages) if uses_major_sections else section.page_end)
-                )
-                pages = [page for page in parsed.pages if section.page_start <= page.page_number <= page_end]
+                start=boundaries[index]
+                end=boundaries[index+1] if index+1<len(boundaries) else (max(p.page_number for p in parsed.pages)+1,0)
+                portions=[]
+                for page in parsed.pages:
+                    if not start[0]<=page.page_number<=end[0]:continue
+                    lo=start[1] if page.page_number==start[0] else 0
+                    hi=end[1] if page.page_number==end[0] else len(page.text)
+                    if hi>lo and page.text[lo:hi].strip():portions.append((page,page.text[lo:hi]))
+                if index==0:
+                    portions=prefix+portions
                 text = "\n\n".join(
-                    f"[{page.source_anchor or parsed.filename + ', p. ' + str(page.page_number)}]\n{page.text}"
-                    for page in pages
-                    if page.text.strip()
+                    f"[{page.source_anchor or parsed.filename + ', p. ' + str(page.page_number)}]\n{portion}"
+                    for page,portion in portions
                 )
                 if text.strip():
-                    chapters.append(ChapterSource(section.title, text, [section.source_anchor]))
+                    chapters.append(ChapterSource(section.title, text, [page.source_anchor or section.source_anchor for page,_ in portions]))
         else:
             pages = [page for page in parsed.pages if page.text.strip()]
             if pages:
@@ -677,9 +698,12 @@ def generate_hierarchical_report(
         raise LLMProviderError(errors[0] if errors else LLMErrorInfo(code="LLM_PROVIDER_ERROR", message="No chunk understanding", provider=provider.display_name, model=model, fallback_used=True))
 
     primary_evidence = [span for span in evidence_catalog if not span["source"]["block_id"]]
-    course = stage("course_model", {"title": title, "intent": intent, "chunks": understanding, "materials": source_metadata,
+    course = reconstruct_course({"title": title, "intent": intent, "chunks": understanding, "materials": source_metadata,
         "primary_evidence": primary_evidence,
-        "document_structure": [p.document_structure.model_dump(mode="json") if p.document_structure else {} for p in parsed_files]}, min(capability.max_output_tokens, 7000), lambda data: CourseModel.model_validate(_coerce_stage_json(data)))
+        "document_structure": [{"document_id":p.document_structure.document_id,"filename":p.filename,"page_count":p.document_structure.page_count,
+            "sections":[section.model_dump(mode='json') for section in p.document_structure.sections]} if p.document_structure else {} for p in parsed_files]},
+        stage=stage,make_prompt=_v4_prompt,input_budget=capability.available_input_tokens(system_tokens=1024),
+        output_budget=min(capability.max_output_tokens,7000),validate=lambda data:CourseModel.model_validate(_coerce_stage_json(data)))
     course = normalize_course(course)
     course_data = course.model_dump(mode="json",exclude_defaults=True)
     def validate_blueprint(data):
@@ -689,6 +713,7 @@ def generate_hierarchical_report(
         return validate_plan_ids(value,course)
     blueprint = stage("study_blueprint", {"course_model": course_data, "intent": intent, "source_metadata": source_metadata}, min(capability.max_output_tokens, 5000), validate_blueprint)
     optional_artifacts: dict = {}
+    artifact_repairs: list[dict] = []
     requested_artifacts = _requested_artifacts(study_goal, exam_type)
     if requested_artifacts:
         artifact_payload = {
@@ -703,10 +728,25 @@ def generate_hierarchical_report(
             "instruction": "Generate only requested artifacts. Label past-exam observations OBSERVED, model interpretations INFERRED, and new practice GENERATED.",
         }
         def validate_artifacts(raw):
-            nonlocal optional_artifacts
+            from app.services.artifact_repair import repair_artifacts
+            from app.schemas.learning_artifacts import Question, RecallCard
+            nonlocal optional_artifacts, artifact_repairs
             optional_artifacts = _coerce_stage_json(raw)
+            def repair(collection, index, item, reason, checked, validate):
+                schema = RecallCard if collection == "recall_cards" else Question
+                payload = {"collection": collection, "item": item, "defect": reason,
+                    "course_model": course_data, "primary_evidence": primary_evidence,
+                    "output_schema": schema.model_json_schema(),
+                    "reserved_questions": [q.question for q in [*checked.question_bank.questions,*checked.mock_exam.questions]],
+                    "reserved_ids": [q.question_id for q in [*checked.question_bank.questions,*checked.mock_exam.questions]],
+                    "instruction": "Return only the corrected item object, not a collection. Repair the stated defect using evidence; preserve its learning objective. Do not repeat reserved questions or IDs. If no justified solution exists, retain the failure."}
+                return stage("artifact_repair", payload, min(capability.max_output_tokens,2500),
+                    lambda value: validate(_coerce_stage_json(value)), f"{collection}:{index}")
+            optional_artifacts, artifact_repairs = repair_artifacts(optional_artifacts, course=course,
+                blueprint=blueprint, parsed_files=parsed_files, repair=repair)
             checked = build_artifacts(course, blueprint, [], "", optional_artifacts, parsed_files)
-            if checked.quality_report.failures or checked.quality_report.quarantined:
+            if any(f.startswith("missing_valid_") for f in checked.quality_report.failures) or any(
+                q.get("collection") in {"practice_questions","mock_exam","recall_cards"} for q in checked.quality_report.quarantined):
                 raise ValueError("Structured artifacts failed validation")
             return optional_artifacts
         try:
@@ -722,7 +762,11 @@ def generate_hierarchical_report(
         plan = unit_plan.model_dump(mode="json")
         draft = None
         relevant = _relevant_evidence(plan, understanding)
-        unit_payload = {"unit": plan, "course_model": course_view(course_data,plan), "evidence": relevant, "neighbor_summaries": [d.markdown[-1200:] for d in drafts[-2:]], "intent": intent}
+        scoped_course = course_view(course_data,plan)
+        anchors = {ref.get("anchor") for concept in scoped_course.get("concepts",[]) for ref in concept.get("source_refs",[])}
+        anchors.update(ref.get("anchor") for chunk in relevant for ref in chunk.get("source_refs",[]))
+        unit_evidence = [span for span in primary_evidence if span["source"]["anchor"] in anchors]
+        unit_payload = {"unit": plan, "course_model": scoped_course, "evidence": relevant, "primary_evidence":unit_evidence, "neighbor_summaries": [d.markdown[-1200:] for d in drafts[-2:]], "intent": intent}
         try:
             def validate_unit(raw):
                 data = _coerce_stage_json(raw)
@@ -738,6 +782,7 @@ def generate_hierarchical_report(
                         raise scope_error(("missing_knowledge_ids",),critique.missing_knowledge_ids,"Missing IDs must be from this unit's required knowledge IDs, not other units/objectives")
                     return critique
                 critique = stage("unit_critic", {"unit": candidate.model_dump(mode="json"), "plan": plan, "evidence": relevant,
+                    "primary_evidence":unit_evidence,
                     "unit_scope":course_view(course_data,plan).get("unit_scope",{}),"intent": intent}, min(capability.max_output_tokens, 4000), validate_critique, f"unit-{unit_index}-review-{attempt}")
                 unit_quality.append({"unit_id": candidate.unit_id, "attempt": attempt, **critique.model_dump(mode="json")})
                 if critique.verdict != "READY" or critique.issues or critique.missing_knowledge_ids:
@@ -761,7 +806,7 @@ def generate_hierarchical_report(
                         raise ValueError("Repair changed stable unit identity")
                     return review_draft(candidate, 1)
                 draft = stage("unit_repair", {"unit": draft.model_dump(mode="json"), "defect": str(defect)[:1000],
-                    "evidence": relevant, "required_knowledge_ids": plan.get("knowledge_ids", [])}, capability.max_output_tokens, validate_repair, f"unit-{unit_index}")
+                    "evidence": relevant, "primary_evidence":unit_evidence, "required_knowledge_ids": plan.get("knowledge_ids", [])}, capability.max_output_tokens, validate_repair, f"unit-{unit_index}")
             drafts.append(draft)
         except CheckpointWriteError:
             raise
@@ -818,6 +863,7 @@ def generate_hierarchical_report(
     }
     report.insufficient_materials = [d.title for d in drafts if d.status != "READY"]
     artifacts = build_artifacts(course, blueprint, drafts, canonical, optional_artifacts, parsed_files)
+    report.overview["artifact_repairs"] = artifact_repairs
     if errors:
         artifacts.generation_status.state = "PARTIAL"
     project_artifacts(report, artifacts, intent)
@@ -835,6 +881,7 @@ def _v4_prompt(stage: str, payload: dict) -> str:
         "study_blueprint": ("Plan evidence-linked teaching units using knowledge_ids, title, priority and rationale. Respect exam scope, learner focus, remaining time and daily time budget.", StudyBlueprint.model_json_schema()),
         "unit_draft": ("Teach this unit using its evidence: explain meaning, mechanism, conditions and limitations, with concrete examples and source refs as relevant. Do not use generic study advice instead of explanations.", UnitDraft.model_json_schema()),
         "optional_artifacts": ("Return active_recall_cards, practice_questions and mock_exam.questions as separate collections. Practice and exam questions must differ. Supply complete answers, solutions, rubric, knowledge IDs and exact provided source anchors. Generated exercises use GENERATED provenance.", GeneratedArtifactBundle.model_json_schema()),
+        "artifact_repair": ("Correct the single rejected item using primary evidence and the supplied item schema. Preserve its learning objective and unrelated valid content. Return only the item object, never a replacement bank. Unsupported diagrams or answers remain unverified; do not fabricate evidence to pass.", payload.get("output_schema",{})),
         "course_synthesis": ("Return canonical_markdown. Preserve important concepts, conditions and source locations; remove redundancy, flag unresolved evidence. Never promote generated situations to material facts.", {"type": "object", "required": ["canonical_markdown"], "properties": {"canonical_markdown": {"type": "string"}}}),
         "unit_repair": ("Repair only the identified defects using supplied evidence. Preserve valid content, required knowledge and unit identity. Return the repaired unit.", UnitDraft.model_json_schema()),
         "unit_critic": ("Review the unit against evidence and plan. Check factual grounding, explanation and conditions, formula use, specificity, redundancy, scope, contradictions and missing knowledge. List important claims with SUPPORTED/INFERRED/GENERATED/INSUFFICIENT basis and source refs. Use READY only if no repair is needed. Do not delete hard concepts to pass.", UnitCritique.model_json_schema()),

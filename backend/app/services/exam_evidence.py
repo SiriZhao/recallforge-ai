@@ -11,6 +11,7 @@ class ObservedQuestion(BaseModel):
     text: str
     source_refs: list[SourceRef]
     question_type: str = "unknown"
+    question_type_basis: str = "HEURISTIC_REQUIRES_REVIEW"
     options: list[str] = Field(default_factory=list)
     provenance: str = "OBSERVED"
     answer_status: str = "UNVERIFIED"
@@ -29,7 +30,10 @@ class CourseExamModel(BaseModel):
 def question_signature(text):
     # Keep mathematical signs, case in source, decimals and option content.
     cleaned = re.sub(r"^\s*\d+\s*[.、．)]\s*", "", text)
-    return re.sub(r"\s+", "", cleaned).casefold()
+    if re.search(r"\bdef |\bclass |print\(|\bif .*:",cleaned):
+        # Python indentation and case are behavior, not presentation noise.
+        return cleaned.replace("\r\n","\n").strip()
+    return re.sub(r"\s+", "", cleaned)
 
 
 def page_kind(text):
@@ -41,7 +45,7 @@ def page_kind(text):
 
 
 def observed_exam_model(parsed_files, roles):
-    model, by_signature = CourseExamModel(), {}
+    model = CourseExamModel()
     for parsed in parsed_files:
         role = roles.get(parsed.filename, roles.get(parsed.path, "other"))
         if role == "syllabus":
@@ -71,6 +75,8 @@ def observed_exam_model(parsed_files, roles):
                 prefix=page.text[:matches[0].start()].strip()
                 if prefix:
                     current.text += "\n"+prefix
+                    current.source_refs.append(SourceRef(filename=parsed.original_filename or parsed.filename,
+                        page=page.page_number,anchor=page.source_anchor or f"{parsed.filename}, p. {page.page_number}",fragment=prefix))
             for index, match in enumerate(matches):
                 end = matches[index+1].start() if index+1<len(matches) else len(page.text)
                 text=page.text[match.start():end].strip()
@@ -79,14 +85,9 @@ def observed_exam_model(parsed_files, roles):
                 options=re.findall(r"(?:^|\s)([A-H][.、．)]\s*.*?)(?=\s+[A-H][.、．)]|$)",text,re.S)
                 kind="multiple_choice" if len(options)>=2 else "programming" if re.search(r"def |print\(|编写程序|代码",text) else "short_answer"
                 signature=question_signature(text)
-                if signature in by_signature:
-                    by_signature[signature].duplicate_sources.append(ref)
-                    current=None
-                    continue
                 current=ObservedQuestion(question_id="observed-"+stable_hash(signature)[:20],text=text,
                     source_refs=[ref],question_type=kind,options=options,
                     completeness="CANDIDATE_COMPLETE" if len(text)>25 and (not options or len(options)>=4) else "REQUIRES_REVIEW")
-                by_signature[signature]=current
                 model.observed_questions.append(current)
     # Recompute identities after cross-page continuation; deduplicate again.
     unique={}

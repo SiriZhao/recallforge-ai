@@ -8,6 +8,7 @@ from app.schemas.review import GeneratedExamQuestion, GeneratedMockExam, AnkiCar
 from app.services.stage_checkpoints import stable_hash
 from app.services.evidence_catalog import catalog_for, resolves
 from app.services.numeric_verification import verify
+from app.services.choice_answers import answer_labels
 
 
 def _text(value):
@@ -42,14 +43,16 @@ def _question_failure(question, allowed, concepts):
     if choice:
         if len(question.options) < 2 or len({_text(o) for o in question.options}) != len(question.options) or not all(o.strip() for o in question.options):
             return "invalid_options"
-        labels = [chr(65 + index) for index in range(len(question.options))]
-        answer = question.answer.strip()
-        if answer not in question.options and answer not in labels:
+        labels = answer_labels(question.answer,question.options)
+        if labels is None:
             return "unmapped_choice_answer"
+        if len(labels)>1 and not re.search(r'多选|多项|multiple_select',question.question_type,re.I):
+            return "ambiguous_choice_scoring_rule"
     return None
 
 
 def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
+    course=course.model_copy(deep=True)
     allowed = catalog_for(parsed_files)
     concepts = {c.id for c in course.concepts}
     artifacts = LearningArtifacts(course_model=course, study_blueprint=blueprint,
@@ -106,10 +109,15 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
         quality.failures.append("missing_knowledge_graph")
     for concept in course.concepts:
         if not _refs_valid(concept.source_refs, allowed):
+            concept.basis = "INSUFFICIENT"
             quality.failures.append(f"unresolved_concept_source:{concept.id}")
     for relation in course.relationships:
         if relation.source not in concepts or relation.target not in concepts or not _refs_valid(relation.source_refs, allowed):
             quality.failures.append(f"unresolved_relationship:{relation.source}:{relation.target}")
+            quality.quarantined.append({"collection":"knowledge_relationships","source":relation.source,"target":relation.target,"reason":"unresolved_source_or_entity"})
+    artifacts.knowledge_graph.edges=[relation.model_dump(mode='json') for relation in course.relationships
+        if relation.source in concepts and relation.target in concepts and _refs_valid(relation.source_refs,allowed)]
+    artifacts.knowledge_graph.nodes=[concept.model_dump(mode='json') for concept in course.concepts]
     if any(draft.status != "READY" for draft in drafts):
         quality.failures.append("incomplete_learning_units")
     if quality.failures or quality.quarantined:

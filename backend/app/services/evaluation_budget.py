@@ -28,6 +28,12 @@ class EvaluationClient:
         self.transport = transport or httpx.Client(timeout=120)
         with self.connect() as db:
             db.execute("CREATE TABLE IF NOT EXISTS evaluation_calls (id TEXT PRIMARY KEY, arm TEXT, status TEXT, reserve REAL, charge REAL, request_json TEXT, response_json TEXT, latency REAL)")
+            db.execute("CREATE TABLE IF NOT EXISTS evaluation_policy (id INTEGER PRIMARY KEY, model TEXT, limit_usd REAL, input_rate REAL, output_rate REAL)")
+            expected=(model,limit_usd,input_rate,output_rate)
+            saved=db.execute("SELECT model,limit_usd,input_rate,output_rate FROM evaluation_policy WHERE id=1").fetchone()
+            if saved and tuple(saved)!=expected:
+                raise EvaluationBudgetError("Existing ledger policy differs; authorization cannot be silently expanded")
+            db.execute("INSERT OR IGNORE INTO evaluation_policy VALUES(1,?,?,?,?)",expected)
 
     def connect(self):
         return sqlite3.connect(self.ledger, timeout=30)

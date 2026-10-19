@@ -33,3 +33,23 @@ it('records recall exposure separately from an explicit learner rating',async()=
   fireEvent.keyDown(screen.getByRole('button',{name:'查看问题'}),{key:'4'});
   await waitFor(()=>expect(reviewApi).toHaveBeenCalledWith('/learning/jobs/owned-job/attempts','POST',expect.objectContaining({kind:'recall',self_score:1})));
 });
+
+it('reuses the idempotency token after an uncertain network outcome',async()=>{
+  let attempts=0;
+  vi.mocked(reviewApi).mockImplementation(async(_path,method)=>{
+    if(method==='POST'){
+      if(++attempts===1)throw new Error('connection interrupted after submission');
+      return {item_id:'q1',kind:'practice',answer:'A',assessment,created_at:'2030-01-01'} as never;
+    }
+    return {attempts:[],mastery:{},recommendation:{items:[]}} as never;
+  });
+  render(<Questions questions={[question]} mock={false} jobId="owned-job"/>);
+  fireEvent.change(screen.getByLabelText('第 1 题答案'),{target:{value:'A'}});
+  fireEvent.click(screen.getByRole('button',{name:'查看参考答案'}));
+  expect(await screen.findByText(/保存状态尚未确认/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'收起解析'}));
+  fireEvent.click(screen.getByRole('button',{name:'查看参考答案'}));
+  await waitFor(()=>expect(attempts).toBe(2));
+  const posts=vi.mocked(reviewApi).mock.calls.filter(([,method])=>method==='POST');
+  expect(posts[0][2]).toEqual(posts[1][2]);
+});

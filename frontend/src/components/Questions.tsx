@@ -31,6 +31,11 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
     if(saved)setAssessments(old=>({...old,[index]:saved}));
     saving.current.delete(index);
   }
+  function changeAnswer(index:number,value:string){
+    setAnswers(old=>({...old,[index]:value}));
+    setAssessments(old=>{const next={...old};delete next[index];return next;});
+    setRevealed(old=>({...old,[index]:false}));
+  }
   if(!questions.length)return <div className="empty-projects"><h2>暂无生成题目</h2><p>补充课程资料或往年试卷后重新生成。</p></div>;
   return <>
     <div className="document-label">{mock?'MOCK EXAM':'PRACTICE'}<span>{questions.length} 道题 · 自评练习</span></div>
@@ -40,7 +45,7 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
       <h3>{String(i+1).padStart(2,'0')} / {question.type||question.question_type}</h3>
       <p className="question-stem">{question.question}</p>
       {!!question.options?.length&&<ul>{question.options.map((option,j)=><li key={j}>{option}</li>)}</ul>}
-      <textarea aria-label={`第 ${i+1} 题答案`} placeholder="写下你的答案与思路…" value={answers[i]||''} onChange={event=>setAnswers(old=>({...old,[i]:event.target.value}))}/>
+      <textarea aria-label={`第 ${i+1} 题答案`} placeholder="写下你的答案与思路…" value={answers[i]||''} onChange={event=>changeAnswer(i,event.target.value)}/>
       <Button variant="text" aria-expanded={!!revealed[i]} title="查看解析后，可聚焦此按钮按 Alt+1–4 自评：不会、困难、基本掌握、熟练" onClick={()=>void reveal(i)} onKeyDown={event=>{if(event.altKey&&!event.repeat)void selfAssess(i,event.key);}}>{revealed[i]?'收起解析':'查看参考答案'}</Button>
       {revealed[i]&&<div className="concept-callout"><div>
         <strong>参考答案</strong><p>{question.answer||'本题未返回答案'}</p>

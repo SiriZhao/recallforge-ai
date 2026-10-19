@@ -58,7 +58,8 @@ def run(monkeypatch, provider, checkpoints=None, callback=None, context=None, pa
 
 
 def test_all_five_tabs_receive_validated_artifacts(monkeypatch):
-    result, _ = run(monkeypatch, GroundedProvider())
+    provider = GroundedProvider()
+    result, _ = run(monkeypatch, provider)
     report = result.report
     assert result.llm_status == "success"
     assert report.markdown and report.study_units and report.anki_cards
@@ -66,6 +67,34 @@ def test_all_five_tabs_receive_validated_artifacts(monkeypatch):
     assert report.practice_questions[0].question != report.mock_exam.questions[0].question
     assert report.overview["artifacts"]["question_bank"]["questions"][0]["quality_status"] == "VALIDATED"
     assert report.overview["materials"][0]["role"] == "syllabus"
+    for name,payload in provider.calls:
+        if name in {"unit_draft","unit_critic"}:
+            assert payload["primary_evidence"][0]["text"] == "The cell membrane controls transport."
+
+
+def test_only_rejected_item_is_repaired_and_checkpointed(monkeypatch):
+    class RepairProvider(GroundedProvider):
+        def generate_stage(self, stage, prompt, config, *, max_output_tokens):
+            if stage == "artifact_repair":
+                payload = json.loads(prompt)["payload"]
+                self.calls.append((stage, payload))
+                assert payload["collection"] == "practice_questions"
+                item = payload["item"]
+                item["answer"] = "Controls transport"
+                return item
+            return super().generate_stage(stage,prompt,config,max_output_tokens=max_output_tokens)
+    saved = {}
+    def callback(key, chapter, chunk, status, content, code, message):
+        saved[key] = {"status": status,"content":content}
+    first = RepairProvider(invalid_question=True)
+    result, _ = run(monkeypatch,first,callback=callback)
+    assert result.llm_status == "success"
+    assert len([s for s,_ in first.calls if s == "artifact_repair"]) == 1
+    assert result.report.mock_exam.questions[0].question_id == "e1"
+    assert result.report.overview["artifact_repairs"][0]["status"] == "REPAIRED"
+    resumed = RepairProvider(invalid_question=True)
+    run(monkeypatch,resumed,checkpoints=saved)
+    assert not resumed.calls
 
 
 def test_every_successful_stage_is_reused_and_failed_unit_recovers(monkeypatch):

@@ -303,6 +303,9 @@ class GeneratedExamQuestion(BaseModel):
     common_errors: list[str] = Field(default_factory=list)
     source_refs: list[SourceRef] = Field(default_factory=list)
     provenance: str = "GENERATED"
+    reference_expression: str | None = None
+    numeric_answer: float | None = None
+    quantity_kind: str = "number"
     question_type: str
     question: str
     answer: str

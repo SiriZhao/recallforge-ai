@@ -132,3 +132,41 @@ and reject objective IDs; critic coverage is scoped to the actual assigned unit,
 with prerequisite closure. Active-path quality gates use reference resolution,
 coverage manifests, unit readiness and artifact validation rather than word count
 or question quotas. A partial synthesis cannot get a high score by adding filler.
+
+## Long-course coverage and targeted question recovery (2026-10-19)
+
+Fixed same-page chapter boundaries, preserving preamble once while excluding TOC
+interference. Continuation chunks retain page anchors. Oversized course modelling
+now batches primary evidence without silent truncation, namespaces batch concept
+IDs and explicitly leaves cross-batch dependency completeness unverified. Concept
+identity uses source/name rather than model-definition wording when localized.
+
+Teaching drafts, critics and repairs now receive scoped primary evidence, not only
+model summaries. Rejected questions/cards get at most four single-item repairs per
+bundle; each replacement is validated against the entire bank to prevent displacing
+valid siblings or introducing practice/exam duplicates. Failed replacements remain
+quarantined. Repair checkpoints are reusable and database write failures propagate.
+Exam deduplication waits for full cross-page stems, preserves distinct continuations
+and treats Python case/indentation as semantic. Question-type extraction is labeled
+heuristic rather than human-verified.
+
+Numeric responses are checked against bounded reference arithmetic. Same-day
+repetitions cannot double the review interval. Time-to-exam changes relative review
+priorities, tested with different selected items. Failed client requests reuse the
+same nonce; editing a response clears stale grading in the existing component.
+No style/layout changes.
+
+Validation: full backend 154 passed / 1 skipped (external long-PDF opt-in test).
+The opt-in private CLI and offline measurement command are reproducible; raw exam
+content, responses, OCR images and the SQLite spend ledger remain ignored. Current
+exploratory botany comparison uses identical source hashes and common per-arm caps,
+but unequal actual calls/tokens. No human gold or blind scores exist. Engine output
+is still partial, and no quality superiority is claimed. Conservative cumulative
+paid-call upper bound before the next trial: USD 0.3359148, no uncertain requests.
+The public price bound is cache-miss peak pricing, not an exact vendor invoice.
+
+Continuity priorities: validate repaired real-model outputs, strengthen evidenced
+course relations and formula conditions, add vetted independent answers before
+efficacy claims, and check Windows packaging on the final frozen source snapshot.
+Earlier PyInstaller smoke build succeeded but preceded this snapshot; Inno Setup
+and optional WeasyPrint native libraries were unavailable. Main/release unchanged.

@@ -22,6 +22,10 @@ def test_normalization_merges_aliases_only_with_matching_meaning():
     assert len(result.concepts)==2 and result.concept_id_aliases['a']==result.concept_id_aliases['b']
     assert result.uncertainties
     assert normalize_course(model).concepts[0].id==result.concepts[0].id
+    original=CourseModel.model_validate({'concepts':[{'id':'random-first','name':'条件概率','definition':'First wording','source_refs':[{'document_id':'stable-source','page':1,'anchor':'course.pdf, p. 1'}]}]})
+    rephrased=original.model_copy(deep=True)
+    rephrased.concepts[0].id='random-next';rephrased.concepts[0].definition='Rephrased explanation'
+    assert normalize_course(original).concepts[0].id==normalize_course(rephrased).concepts[0].id
 
 
 def test_observed_exam_dedup_and_no_fake_answer_or_probability():
@@ -41,6 +45,21 @@ def test_subjective_assessment_does_not_invent_a_grade():
     assert result['score'] is None and result['needs_self_review']
     assert result['missing_points']==['regulates transport']
     assert assess_answer({'answer':'reference'},'learner',self_score=.5)['assessed_by']=='learner_self_report'
+
+
+def test_duplicate_exam_stems_keep_their_distinct_continuations_and_sources():
+    def source(name, ending):
+        pages=[ParsedPage(page_number=1,text='1. Explain this calculation using the data on the next page.',source='text_extract',source_anchor=f'{name}, p. 1'),
+               ParsedPage(page_number=2,text=ending+'\n2. Explain the conditions that make the calculation valid.',source='text_extract',source_anchor=f'{name}, p. 2')]
+        return ParsedFile(filename=name,path=name,file_type='.pdf',pages=pages,raw_text='\n'.join(p.text for p in pages))
+    model=observed_exam_model([source('a','Parameter is 10.'),source('b','Parameter is 20.')],{'a':'past_exam','b':'past_exam'})
+    first=[q for q in model.observed_questions if 'next page' in q.text]
+    assert len(first)==2
+    assert all(len(q.source_refs)==2 for q in first)
+    assert first[0].question_id!=first[1].question_id
+    from app.services.exam_evidence import question_signature
+    assert question_signature('1. print(A)')!=question_signature('1. print(a)')
+    assert question_signature('1. if True:\n    print(1)')!=question_signature('1. if True:\nprint(1)')
 
 
 def test_schema_leaf_corrections_cannot_remove_knowledge():
@@ -79,6 +98,9 @@ def test_numeric_verifier_checks_arithmetic_without_executing_code():
     for expression in ["__import__('os').system('echo unsafe')",'2**1000000','factorial(1000000)']:
         with pytest.raises((ValueError,TypeError)):
             calculate(expression)
+    numeric=assess_answer({'answer':'0.5','reference_expression':'1/2','numeric_answer':.5,'quantity_kind':'probability'},'2/4')
+    assert numeric['score']==1 and numeric['assessed_by']=='deterministic_arithmetic'
+    assert assess_answer({'answer':'答案：B','question_type':'单选题','options':['A. First','B. Second']},'(B)')['score']==1
 
 
 def test_unit_scopes_reject_objective_ids_and_preserve_prerequisites():
@@ -111,11 +133,23 @@ def test_mastery_and_schedule_respond_to_actual_feedback():
     assert failed['mastery']<success['mastery']
     repeated=update_mastery(success,1,'hard',now+timedelta(days=1))
     assert repeated['interval_days']>success['interval_days']
+    same_day=update_mastery(success,1,'hard',now+timedelta(minutes=1))
+    assert same_day['interval_days']==success['interval_days']
     concepts=[{'id':'a','name':'Foundations','importance':50,'difficulty':50},
               {'id':'b','name':'Advanced','importance':95,'difficulty':50,'prerequisites':['a']}]
     plan=recommend(concepts,{'a':failed,'b':success},{'exam_date':'2030-01-02','daily_minutes':20,'target_score':'90'},today=date(2030,1,1))
     assert plan['items'][0]['knowledge_id']=='a'
     assert sum(item['estimated_minutes'] for item in plan['items'])<=20
+
+
+def test_exam_date_changes_which_topic_fits_the_daily_budget():
+    concepts=[{'id':'exam-core','name':'Exam core','importance':95,'difficulty':50},
+              {'id':'foundation','name':'Foundation','importance':55,'difficulty':50}]
+    states={'exam-core':{'mastery':.5},'foundation':{'mastery':.25}}
+    near=recommend(concepts,states,{'exam_date':'2030-01-02','daily_minutes':10,'target_score':'80'},today=date(2030,1,1))
+    far=recommend(concepts,states,{'exam_date':'2030-02-01','daily_minutes':10,'target_score':'80'},today=date(2030,1,1))
+    assert near['items'][0]['knowledge_id']=='exam-core'
+    assert far['items'][0]['knowledge_id']=='foundation'
 
 
 @pytest.fixture
