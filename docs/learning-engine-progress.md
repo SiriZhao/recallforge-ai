@@ -233,3 +233,34 @@ are not folded. Question/card deduplication uses the same code-sensitive signatu
 as exam extraction, preserving Python case and indentation. These are deterministic
 identity/scoring improvements, not a full Python or chemical-reaction verifier.
 Full backend: 166 passed / 1 skipped; no additional paid requests.
+
+## Frozen build and continuation evidence
+
+Engine snapshot: a87ad37 (six local phase commits after 0291fc5). Main stays at
+e500035; no public push, merge, release or tag change was performed in this run.
+The final isolated PyInstaller build succeeded. Read-only EXE inspection verified
+92 compiled application modules and four frontend assets against current source;
+zero mismatches, missing required modules or env/database archive entries. EXE size:
+220101654 bytes. Runtime and Inno Setup installer acceptance remain NOT_TESTED;
+the compiler was absent from PATH/common install locations and optional WeasyPrint
+native/ONNX quantization dependencies emitted warnings. No pixel-level UI baseline
+comparison was performed; style source is unchanged and DOM-container tests pass.
+
+Reproduce final archive verification from repository root:
+
+```powershell
+python scripts/verify-packaged-engine.py backend/runtime/packaging-check-casefinal-20261019/dist/ExamForgeAI.exe
+```
+
+Machine-readable tests are local-only at runtime/verification/backend-final.xml
+and frontend-final.json under backend. The private continuation checkpoint includes
+ledger/sample locations and exact remaining tasks. New paid calls must use the
+existing ledger (USD 0.3782982 upper bound, 73 complete requests, zero uncertain).
+
+Concrete next engine work: preserve the full structured critic when repairing
+units (the current defect summary is length-limited); enforce question repair's
+knowledge/objective scope invariants; project structured citations into legacy
+display hints where absent; deepen safe programming/chemical-diagram validation;
+and obtain independent real-course gold/anonymous human scores before reporting
+efficacy. The six-course, 95% coverage/provenance and 15-point superiority targets
+have NOT been established by the present engineering tests or exploratory runs.
