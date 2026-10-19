@@ -211,6 +211,7 @@ def test_mistakes_are_answer_linked_persistent_and_never_invent_cause(learning_c
     progress=client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=headers).json()
     assert progress['diagnostics']['k1']['record_count']==1
     assert progress['diagnostics']['k1']['categories']=={'uncertain':1}
+    assert progress['diagnostics']['k1']['current_review_count']==1
     assert progress['recommendation']['practice_item_ids']==['p1']
     correct={**wrong,'answer':'A','nonce':'later-correct'}
     assert client.post(endpoint,headers=headers,json=correct).status_code==200
@@ -218,4 +219,51 @@ def test_mistakes_are_answer_linked_persistent_and_never_invent_cause(learning_c
     progress=client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=headers).json()
     assert progress['diagnostics']['k1']['record_count']==1
     assert progress['mastery']['k1']['attempts']==2
+    assert progress['diagnostics']['k1']['current_review_count']==0
+    assert progress['diagnostics']['k1']['subsequent_success_count']==1
+    assert progress['diagnostics']['k1']['records'][0]['status']=='SUBSEQUENT_SUCCESS'
     assert client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=other).status_code==404
+
+
+def test_consecutive_answers_change_next_topic_and_survive_database_reopen(learning_client):
+    client,headers,_,job=learning_client
+    saved=store.get_job(job)['result']
+    report=saved['review_report']
+    first=report['practice_questions'][0]
+    report['practice_questions'].append({**first,'question_id':'p2','knowledge_ids':['k2']})
+    report['overview']['artifacts']['course_model']['concepts'].append(
+        {'id':'k2','name':'Second concept','importance':70,'difficulty':30})
+    store.update_job(job,status='completed',progress=100,message='synthetic two-topic fixture',result=saved)
+    endpoint=f'/api/review-projects/learning/jobs/{job}'
+    def answer(item,value,nonce):
+        response=client.post(endpoint+'/attempts',headers=headers,
+            json={'kind':'practice','item_id':item,'answer':value,'nonce':nonce})
+        assert response.status_code==200
+    answer('p1','B','first-wrong')
+    answer('p2','A','second-correct')
+    before=client.get(endpoint+'/progress',headers=headers).json()
+    assert before['recommendation']['items'][0]['knowledge_id']=='k1'
+    assert before['recommendation']['practice_item_ids'][0]=='p1'
+    first_mastery=before['mastery']['k1']['mastery']
+    # No reset of prior failures: independent new evidence must update mastery.
+    for index in range(4): answer('p1','A',f'relearned-{index}')
+    answer('p2','B','second-now-wrong')
+    projects.initialize_review_database()
+    after=client.get(endpoint+'/progress',headers=headers).json()
+    assert after['mastery']['k1']['mastery']>first_mastery
+    assert after['mastery']['k1']['attempts']==5
+    assert after['recommendation']['items'][0]['knowledge_id']=='k2'
+    assert after['recommendation']['practice_item_ids'][0]=='p2'
+    assert after['diagnostics']['k1']['current_review_count']==0
+    assert after['diagnostics']['k2']['current_review_count']==1
+    assert len(after['attempts'])==7
+
+
+def test_literal_rubric_hints_and_choice_grades_preserve_scientific_meaning():
+    assessed=assess_answer({'answer':'Co','scoring_rubric':['Co','print("a b")']},'CO print("ab")')
+    assert assessed['correct_points']==[]
+    assert assessed['score'] is None
+    choice={'question_type':'multiple_choice','options':['A. 1','B. 2'],'answer':'A',
+        'reference_expression':'1','numeric_answer':1}
+    # An unrelated arithmetic value must not overwrite a wrong option grade.
+    assert assess_answer(choice,'B')['score']==0

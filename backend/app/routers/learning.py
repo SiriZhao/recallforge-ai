@@ -162,9 +162,32 @@ def learning_progress(job_id:str,workspace:Workspace=Depends(current_workspace),
     # Historical errors are immutable; current mastery is returned separately so
     # a later success does not erase the evidence trail or label it a current error.
     mistakes=db.scalars(select(MisconceptionRecord).where(MisconceptionRecord.project_id==project.id)).all()
+    history=db.scalars(select(PracticeAttempt).where(PracticeAttempt.project_id==project.id)).all()
+    by_attempt={row.id: (row,json.loads(row.content_json)) for row in history}
+    latest={}
+    for row,data in by_attempt.values():
+        key=(row.job_id,row.kind,row.item_id)
+        if key not in latest or data['created_at']>latest[key]['created_at']:
+            latest[key]=data
     diagnostics={}
     for mistake in mistakes:
-        entry=diagnostics.setdefault(mistake.knowledge_id,{"record_count":0,"categories":{},"basis":"historical answer evidence, not a verified causal diagnosis"})
+        entry=diagnostics.setdefault(mistake.knowledge_id,{"record_count":0,"categories":{},
+            "current_review_count":0,"subsequent_success_count":0,"records":[],
+            "basis":"historical answer evidence, not a verified causal diagnosis"})
         entry["record_count"]+=1
         entry["categories"][mistake.category]=entry["categories"].get(mistake.category,0)+1
+        origin=by_attempt.get(mistake.attempt_id)
+        status='NEEDS_REVIEW'
+        followup=None
+        if origin:
+            row,data=origin
+            followup=latest.get((row.job_id,row.kind,row.item_id))
+            score=followup.get('assessment',{}).get('score') if followup else None
+            if followup and followup['created_at']>data['created_at']:
+                if score is None: status='PENDING_SELF_REVIEW'
+                elif score>=.8: status='SUBSEQUENT_SUCCESS'
+        entry['subsequent_success_count' if status=='SUBSEQUENT_SUCCESS' else 'current_review_count']+=1
+        entry['records'].append({'attempt_id':mistake.attempt_id,'category':mistake.category,
+            'status':status,'latest_attempt_id':followup.get('attempt_id') if followup else None,
+            'basis':'Same job, mode and item follow-up only; later success is not proof of misconception resolution'})
     return {"attempts":attempts,"mastery":states,"recommendation":recommendation,"diagnostics":diagnostics}

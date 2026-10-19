@@ -11,7 +11,9 @@ ERROR_CATEGORIES = {"concept_not_understood", "condition_omitted", "concept_conf
 
 
 def normalized_answer(value):
-    return re.sub(r"\s+", "", value).casefold()
+    # Literal review hints must not claim that Co==CO or distinct Python string
+    # contents match. These hints award no marks, but still must not mislead.
+    return value.strip()
 
 
 def assess_answer(item, answer, *, self_score=None, error_category=None, card=False):
@@ -28,7 +30,7 @@ def assess_answer(item, answer, *, self_score=None, error_category=None, card=Fa
                 uncertainty="Score is relative to this item's reference; reference correctness is not independently guaranteed.")
             if correct!=submitted:
                 result["errors"]=[{"category":"uncertain","basis":"Selected option differs from reference; cause needs learner review."}]
-    if item.get('reference_expression') is not None and item.get('numeric_answer') is not None:
+    if result['needs_self_review'] and not options and item.get('reference_expression') is not None and item.get('numeric_answer') is not None:
         if verify(item['reference_expression'],item['numeric_answer'],item.get('quantity_kind','number')):
             try:
                 submitted=calculate(answer)

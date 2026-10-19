@@ -306,3 +306,18 @@ assertion, which is verified with the focused suite). The first non-elevated
 focused run encountered Windows pytest temp directory permissions; using a fresh
 repository-owned basetemp with authorized process permissions resolved setup.
 No new paid calls. The USD 0.3782982 cumulative upper bound remains unchanged.
+
+## Continuous learning evidence
+
+Historical mistake records now expose their current follow-up state without
+deleting the original error. Only a later answer to the same job, mode and item
+can mark SUBSEQUENT_SUCCESS; it is explicitly not proof of a misconception cure.
+Unscored follow-ups remain pending self-review. Literal rubric hints preserve
+scientific case/spacing, and numeric grading cannot override an option grade.
+
+The API regression submits seven sequential answers across two concepts,
+verifies the next concept/question switches with performance, checks mastery
+changes rather than merely HTTP success, and reopens database initialization
+before reading preserved records. Full backend: 185 passed / 1 skipped.
+PR CI 39245790223 passed the preceding scientific identity phase (55c8682).
+No new paid calls, UI/layout/schema migration changes, main merge or release.
