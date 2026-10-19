@@ -28,10 +28,19 @@ def reconstruct_course(payload,*,stage,make_prompt,input_budget,output_budget,va
         # Providers often restart IDs at c1 in each batch. Namespace before
         # merging so references cannot silently bind to another batch's c1.
         mapping={concept.id:f'b{index}:{concept.id}' for concept in course.concepts}
+        formula_ids={item['id']:f'b{index}:{item["id"]}' for item in course.formulas if item.get('id')}
+        example_ids={item['id']:f'b{index}:{item["id"]}' for item in course.examples if item.get('id')}
         for concept in course.concepts:
             concept.id=mapping[concept.id]
             concept.prerequisites=[mapping.get(key,key) for key in concept.prerequisites]
             concept.related_concepts=[mapping.get(key,key) for key in concept.related_concepts]
+            concept.formula_refs=[formula_ids.get(key,key) for key in concept.formula_refs]
+            concept.example_refs=[example_ids.get(key,key) for key in concept.example_refs]
+        for entities,id_mapping in ((course.formulas,formula_ids),(course.examples,example_ids)):
+            for item in entities:
+                if item.get('id'):item['id']=id_mapping[item['id']]
+                if isinstance(item.get('knowledge_ids'),list):
+                    item['knowledge_ids']=[mapping.get(key,key) for key in item['knowledge_ids']]
         for relation in course.relationships:
             relation.source=mapping.get(relation.source,relation.source)
             relation.target=mapping.get(relation.target,relation.target)

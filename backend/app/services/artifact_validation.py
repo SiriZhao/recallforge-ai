@@ -111,6 +111,24 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
         if not _refs_valid(concept.source_refs, allowed):
             concept.basis = "INSUFFICIENT"
             quality.failures.append(f"unresolved_concept_source:{concept.id}")
+        for field,entities in (("formula_refs",course.formulas),("example_refs",course.examples)):
+            known={entity.get("id") for entity in entities}
+            for key in getattr(concept,field):
+                if key not in known:
+                    quality.failures.append(f"unknown_{field}:{concept.id}:{key}")
+    for entity_type in ("formulas","examples"):
+        for index,entity in enumerate(getattr(course,entity_type)):
+            refs=entity.get("source_refs",[])
+            try:
+                from app.schemas.course_model import SourceRef
+                valid=_refs_valid([SourceRef.model_validate(ref) for ref in refs],allowed)
+            except (ValidationError,TypeError):
+                valid=False
+            if not valid:
+                # Preserve difficult content and mark uncertainty, rather than
+                # dropping a formula to make the quality report look complete.
+                entity["basis"]="INSUFFICIENT"
+                quality.failures.append(f"unresolved_{entity_type}_source:{entity.get('id',index)}")
     for relation in course.relationships:
         if relation.source not in concepts or relation.target not in concepts or not _refs_valid(relation.source_refs, allowed):
             quality.failures.append(f"unresolved_relationship:{relation.source}:{relation.target}")
@@ -136,9 +154,12 @@ def project_artifacts(report, artifacts, intent):
         plan = artifacts.study_blueprint.units[index].model_dump(mode="json") if index < len(artifacts.study_blueprint.units) else {}
         ids = {course.concept_id_aliases.get(value,value) for value in plan.get("knowledge_ids", [])}
         concepts = [c for c in course.concepts if not ids or c.id in ids]
+        formula_ids={key for concept in concepts for key in concept.formula_refs}
+        formulas=[str(formula.get('expression') or formula.get('formula') or formula.get('latex') or formula.get('name') or '')
+            for formula in course.formulas if formula.get('id') in formula_ids and formula.get('basis')!='INSUFFICIENT']
         report.study_units.append(StudyUnit(name=draft.title, key_points=[c.name for c in concepts],
             must_know=[c.definition for c in concepts if c.definition], how_to_review=plan.get("rationale", ""),
-            formulas_or_methods=[condition for c in concepts for condition in c.conditions],
+            formulas_or_methods=[*filter(None,formulas),*[condition for c in concepts for condition in c.conditions]],
             pitfalls=[confusion for c in concepts for confusion in c.common_confusions],
             reason=plan.get("rationale", ""), priority=max(0, min(100, int(plan.get("priority", 50))))))
         report.review_order.append(ReviewPlanItem(chapter=draft.title, importance=report.study_units[-1].priority,

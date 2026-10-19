@@ -35,12 +35,18 @@ def test_batched_course_reconstruction_preserves_every_chunk_and_namespaces_ids(
     def stage(name,payload,limit,validate,identity='course'):
         assert estimate_tokens(prompt(name,payload))<=650
         consumed.extend(chunk['chunk_id'] for chunk in payload['chunks'])
-        return validate({'concepts':[{'id':f'c{i}','name':chunk['chunk_id'],'definition':'Meaning '+chunk['chunk_id']} for i,chunk in enumerate(payload['chunks'])]})
+        return validate({'concepts':[{'id':f'c{i}','name':chunk['chunk_id'],'definition':'Meaning '+chunk['chunk_id'],'formula_refs':['f1'],'example_refs':['e1']} for i,chunk in enumerate(payload['chunks'])],
+            'formulas':[{'id':'f1','expression':'1+1','knowledge_ids':['c0']}], 'examples':[{'id':'e1','text':'Example','knowledge_ids':['c0']}]})
     course=reconstruct_course({'title':'Long course','chunks':chunks,'primary_evidence':[]},stage=stage,make_prompt=prompt,
         input_budget=650,output_budget=1000,validate=CourseModel.model_validate)
     assert consumed==[str(i) for i in range(8)]
     assert len(course.concepts)==8 and len({concept.id for concept in course.concepts})==8
     assert any('CROSS_BATCH' in warning for warning in course.uncertainties)
+    formula_ids={item['id'] for item in course.formulas};example_ids={item['id'] for item in course.examples}
+    assert len(formula_ids)==len(course.formulas) and len(example_ids)==len(course.examples)
+    assert all(set(concept.formula_refs).issubset(formula_ids) for concept in course.concepts)
+    assert all(set(concept.example_refs).issubset(example_ids) for concept in course.concepts)
+    assert all(set(formula['knowledge_ids']).issubset({concept.id for concept in course.concepts}) for formula in course.formulas)
 
 
 def test_metrics_keep_unknown_truth_unknown_and_count_unresolved_citations():
@@ -52,3 +58,15 @@ def test_metrics_keep_unknown_truth_unknown_and_count_unresolved_citations():
     assert metrics['location_resolution_rate']==0
     assert metrics['practice_exam_overlap']==1
     assert metrics['answer_correctness'] is None and metrics['factual_error_rate'] is None
+
+
+def test_formula_without_source_is_preserved_but_never_promoted_to_grounded_output():
+    from app.schemas.course_model import StudyBlueprint
+    from app.services.artifact_validation import build_artifacts
+    course=CourseModel.model_validate({'concepts':[{'id':'c1','name':'Conditional probability','formula_refs':['f1']}],
+        'formulas':[{'id':'f1','expression':'P(A|B)=P(A∩B)/P(B)','conditions':['P(B)>0']}]})
+    result=build_artifacts(course,StudyBlueprint(),[],'',{},[])
+    assert result.course_model.formulas[0]['basis']=='INSUFFICIENT'
+    assert result.course_model.formulas[0]['conditions']==['P(B)>0']
+    assert 'unresolved_formulas_source:f1' in result.quality_report.failures
+    assert 'basis' not in course.formulas[0]  # validation must not mutate canonical input

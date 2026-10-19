@@ -112,6 +112,19 @@ def test_repair_cannot_displace_a_valid_exam_item(monkeypatch):
     assert result.report.overview['artifact_repairs'][0]['status']=='FAILED'
 
 
+def test_source_linked_formulas_reach_existing_study_fields(monkeypatch):
+    class FormulaProvider(GroundedProvider):
+        def generate_stage(self,stage,prompt,config,*,max_output_tokens):
+            value=super().generate_stage(stage,prompt,config,max_output_tokens=max_output_tokens)
+            if stage=='course_model':
+                value['concepts'][0]['formula_refs']=['f1']
+                value['formulas']=[{'id':'f1','expression':'2+2=4','source_refs':[{'anchor':'synthetic.txt, p. 1'}]}]
+            return value
+    result,_=run(monkeypatch,FormulaProvider(),parsed=materials('The cell membrane controls transport. A synthetic arithmetic example is 2+2=4.'))
+    assert result.llm_status=='success'
+    assert '2+2=4' in result.report.study_units[0].formulas_or_methods
+
+
 def test_every_successful_stage_is_reused_and_failed_unit_recovers(monkeypatch):
     saved = {}
     def callback(key, chapter, chunk, status, content, code, message):

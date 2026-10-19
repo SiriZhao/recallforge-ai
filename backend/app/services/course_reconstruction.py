@@ -80,5 +80,9 @@ def normalize_course(course):
             prior=seen[key]
             prior.source_refs=list({ref.model_dump_json():ref for ref in [*prior.source_refs,*relation.source_refs]}.values())
     course.relationships = relations
+    for entities in (course.formulas,course.examples,course.learning_objectives):
+        for entity in entities:
+            if isinstance(entity.get('knowledge_ids'),list):
+                entity['knowledge_ids']=[aliases.get(key,key) for key in entity['knowledge_ids']]
     course.concept_id_aliases = aliases
     return course

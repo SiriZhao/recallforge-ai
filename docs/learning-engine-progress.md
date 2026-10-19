@@ -207,3 +207,19 @@ human blind ratings; six-course efficacy measurement; diagram/chemical-structure
 understanding; robust programming behavior verification; semantic dependency and
 formula-condition completeness; exact current-source Windows installer/runtime
 acceptance. No paid requests should be made without consulting the existing ledger.
+
+## Formula/example association integrity
+
+Course batches now namespace formula and example IDs as well as concept IDs;
+concept references and entity knowledge_ids follow normalization. Source-less
+formulas/examples retain their content/conditions with INSUFFICIENT basis and an
+explicit quality failure. Dangling formula/example references are reported.
+Source-resolved formula expressions now populate the existing study-unit export
+fields instead of showing only condition strings.
+
+Full backend: 164 passed / 1 skipped; frontend: 22 passed with lint/typecheck/build.
+An additional read-only EXE checker compares compiled app code signatures and
+frontend bytes with the current tree, and checks for env/database archive entries.
+It correctly detected three stale engine modules in a successful-but-earlier
+PyInstaller build. Build success alone is not final-source/runtime acceptance.
+Final backend run with the provenance-checker regression: 165 passed / 1 skipped.
