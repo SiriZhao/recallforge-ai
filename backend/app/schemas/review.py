@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.course_model import SourceRef
+from app.schemas.chemical_reaction import ChemicalReaction
 
 
 class UploadedFileInfo(BaseModel):
@@ -66,6 +68,7 @@ class DocumentSection(BaseModel):
     page_end: int
     block_ids: list[str] = Field(default_factory=list)
     source_anchor: str
+    basis: Literal["heading", "bookmark", "document", "processing_window"] = "heading"
 
 
 class DocumentStructure(BaseModel):
@@ -101,6 +104,8 @@ class ParsedFile(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     ocr_cache_used: bool = False
     document_structure: DocumentStructure | None = None
+    content_hash: str = ""
+    original_filename: str = ""
 
 
 class ParseResponse(BaseModel):
@@ -224,6 +229,12 @@ class GenerateReviewRequest(BaseModel):
     detail_level: DetailLevel = "detailed"
     output_style: OutputStyle = "teaching_assistant"
     material_types: dict[str, str] = Field(default_factory=dict)
+    exam_date: str = ""
+    daily_minutes: int = Field(default=90, ge=15, le=960)
+    mastery_level: str = "forgotten"
+    target_score: str = ""
+    focus: str = ""
+    learning_mode: str = ""
     ocr_config: OCRConfig = Field(default_factory=OCRConfig)
     llm_config: LLMConfig = Field(default_factory=LLMConfig)
     enable_chunked_llm: bool = True
@@ -287,6 +298,16 @@ class SprintPlan(BaseModel):
 
 
 class GeneratedExamQuestion(BaseModel):
+    question_id: str = ""
+    knowledge_ids: list[str] = Field(default_factory=list)
+    scoring_rubric: list[str] = Field(default_factory=list)
+    common_errors: list[str] = Field(default_factory=list)
+    source_refs: list[SourceRef] = Field(default_factory=list)
+    provenance: str = "GENERATED"
+    reference_expression: str | None = None
+    numeric_answer: float | None = None
+    quantity_kind: str = "number"
+    chemical_reaction: ChemicalReaction | None = None
     question_type: str
     question: str
     answer: str
@@ -307,6 +328,9 @@ class GeneratedMockExam(BaseModel):
 
 
 class AnkiCard(BaseModel):
+    card_id: str = ""
+    knowledge_ids: list[str] = Field(default_factory=list)
+    source_refs: list[SourceRef] = Field(default_factory=list)
     front: str
     back: str
     tags: str
@@ -395,6 +419,7 @@ class ReviewReport(BaseModel):
     review_order: list[ReviewPlanItem] = Field(default_factory=list)
     sprint_plans: list[SprintPlan] = Field(default_factory=list)
     mock_exam: GeneratedMockExam = Field(default_factory=GeneratedMockExam)
+    practice_questions: list[GeneratedExamQuestion] = Field(default_factory=list)
     anki_cards: list[AnkiCard] = Field(default_factory=list)
     high_frequency_points: list[str] = Field(default_factory=list)
     sprint_checklist: list[str] = Field(default_factory=list)

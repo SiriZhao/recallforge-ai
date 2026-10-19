@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from pathlib import Path
 
 from app.schemas.review import DocumentBlock, DocumentSection, DocumentStructure, ParsedPage
@@ -38,6 +39,8 @@ def analyze_document_structure(
         page_blocks = list(page.blocks)
         next_index = len(page_blocks) + 1
         headings = detect_headings(page.text)
+        if page.title and not any(title == page.title for _, title in headings):
+            headings.insert(0, (1, page.title))
         page.title = headings[0][1] if headings else page.title
         for level, title in headings:
             block_id = f"p{page.page_number}-b{next_index}"
@@ -95,8 +98,15 @@ def analyze_document_structure(
             next_index += 1
 
         page.blocks = _dedupe_blocks(page_blocks)
+        if any(block.type == "image" for block in page.blocks):
+            note = "VISUAL_CONTENT_NOT_INTERPRETED: image preserved; chart/diagram semantics require review or explicit vision parsing."
+            page.warning = f"{page.warning}; {note}" if page.warning else note
+            page.status = "processed_with_warning"
         blocks.extend(page.blocks)
 
+    recurring = Counter(title.casefold() for _, _, title, _ in heading_events)
+    repeated_titles = {title for title, count in recurring.items() if len(pages) >= 4 and count >= max(3, len(pages) // 2)}
+    heading_events = [event for event in heading_events if event[2].casefold() not in repeated_titles]
     title = heading_events[0][2] if heading_events else Path(filename).stem
     sections = build_section_tree(filename, file_type, pages, heading_events, blocks, title)
     structure_warnings = list(warnings or [])
@@ -119,10 +129,12 @@ def recover_long_document_sections(filename: str, file_type: str, pages: list[Pa
     windows=[]; start=1; window=8 if len(pages)<100 else 10
     for i,page in enumerate(pages,1):
         title=(page.title or "").strip()
-        if title and i>start and len(title)<120: windows.append((start,i-1,f"专题 {len(windows)+1}")); start=i
-        elif i-start+1>=window: windows.append((start,i,f"专题 {len(windows)+1}")); start=i+1
-    if start<=len(pages): windows.append((start,len(pages),f"专题 {len(windows)+1}"))
-    return [DocumentSection(section_id=f"recovered-section-{i}",title=t,level=1,page_start=lo,page_end=hi,block_ids=[b.block_id for b in blocks if lo<=b.page_number<=hi],source_anchor=source_anchor(filename,file_type,lo)) for i,(lo,hi,t) in enumerate(windows,1)]
+        if i > 1 and title == (pages[i-2].title or "").strip():
+            title = ""
+        if title and i>start and len(title)<120: windows.append((start,i-1,f"Processing pages {start}–{i-1}")); start=i
+        elif i-start+1>=window: windows.append((start,i,f"Processing pages {start}–{i}")); start=i+1
+    if start<=len(pages): windows.append((start,len(pages),f"Processing pages {start}–{len(pages)}"))
+    return [DocumentSection(section_id=f"recovered-section-{i}",title=t,level=1,page_start=lo,page_end=hi,block_ids=[b.block_id for b in blocks if lo<=b.page_number<=hi],source_anchor=source_anchor(filename,file_type,lo),basis="processing_window") for i,(lo,hi,t) in enumerate(windows,1)]
 
 def source_anchor(filename: str, file_type: str, page_number: int) -> str:
     unit = "slide" if file_type.lower() == ".pptx" else "p."

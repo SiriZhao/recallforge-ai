@@ -28,6 +28,7 @@ def split_semantic_chunks(
     current_length = 0
     current_section = "未命名专题"
     anchors: list[str] = []
+    last_source_anchors: list[str] = []
 
     def flush() -> None:
         nonlocal current, current_length, anchors
@@ -56,6 +57,10 @@ def split_semantic_chunks(
         if heading:
             current_section = heading
         unit_anchors = re.findall(r"\[[^\]\n]+,\s*(?:p\.|slide)\s*\d+\]", unit)
+        if unit_anchors:
+            last_source_anchors = list(unit_anchors)
+        else:
+            unit_anchors = list(last_source_anchors)
         if len(unit) > max_chars:
             flush()
             position = 0

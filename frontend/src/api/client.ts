@@ -142,6 +142,9 @@ export type SprintPlan = {
 };
 
 export type GeneratedExamQuestion = {
+  question_id?: string;
+  knowledge_ids?: string[];
+  scoring_rubric?: string[];
   question_type: string;
   type?: string;
   question: string;
@@ -157,6 +160,8 @@ export type GeneratedExamQuestion = {
 };
 
 export type AnkiCard = {
+  card_id?: string;
+  knowledge_ids?: string[];
   front: string;
   back: string;
   tags: string;
@@ -246,6 +251,7 @@ export type ReviewReport = {
     reason: string;
   }>;
   sprint_plans: SprintPlan[];
+  practice_questions?: GeneratedExamQuestion[];
   mock_exam: {
     title: string;
     questions: GeneratedExamQuestion[];
@@ -301,6 +307,13 @@ export type GenerateReviewParams = {
   export_formats?: ExportFormat[];
   title: string;
   course_name?: string;
+  exam_date?: string;
+  daily_minutes?: number;
+  mastery_level?: string;
+  target_score?: string;
+  focus?: string;
+  learning_mode?: string;
+  material_types?: Record<string, string>;
   study_goal?: StudyGoal;
   exam_type?: ExamType;
   detail_level?: DetailLevel;
