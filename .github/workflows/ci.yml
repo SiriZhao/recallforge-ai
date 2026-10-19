@@ -43,6 +43,11 @@ jobs:
       - name: Run frontend tests
         working-directory: frontend
         run: npm run test -- --run
+      - name: Frontend lint and typecheck
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm run typecheck
       - name: Build frontend
         working-directory: frontend
         run: npm run build

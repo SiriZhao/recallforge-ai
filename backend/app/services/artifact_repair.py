@@ -28,9 +28,20 @@ def repair_artifacts(raw, *, course, blueprint, parsed_files, repair, max_items=
             continue
         before = check(result)
         prior_rejections = {(r.get("collection"), r.get("index")) for r in before.quality_report.quarantined}
+        if (collection,index) not in prior_rejections:continue
         def validate(candidate):
             if not isinstance(candidate, dict):
                 raise ValueError("Repair must return one item object")
+            original=items[index]
+            if isinstance(original,dict):
+                known={concept.id for concept in course.concepts}
+                resolve=lambda values:{course.concept_id_aliases.get(value,value) for value in values if isinstance(value,str)}
+                protected=resolve(original.get('knowledge_ids',[])) & known
+                if not protected.issubset(resolve(candidate.get('knowledge_ids',[]))):
+                    raise ValueError('Repair removed valid knowledge IDs from the learning objective')
+                objective=original.get('learning_objective')
+                if isinstance(objective,str) and objective.strip() and candidate.get('learning_objective')!=objective:
+                    raise ValueError('Repair changed the original learning objective')
             trial = deepcopy(result)
             target = trial[key]
             if isinstance(target, dict):
@@ -43,7 +54,7 @@ def repair_artifacts(raw, *, course, blueprint, parsed_files, repair, max_items=
         record = {"collection": collection, "index": index, "reason": rejected["reason"], "status": "FAILED"}
         attempts.append(record)
         try:
-            items[index] = repair(collection, index, deepcopy(items[index]), rejected["reason"], before, validate)
+            items[index] = validate(repair(collection, index, deepcopy(items[index]), rejected["reason"], before, validate))
             record["status"] = "REPAIRED"
         except CheckpointWriteError:
             raise

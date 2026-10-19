@@ -264,3 +264,25 @@ display hints where absent; deepen safe programming/chemical-diagram validation;
 and obtain independent real-course gold/anonymous human scores before reporting
 efficacy. The six-course, 95% coverage/provenance and 15-point superiority targets
 have NOT been established by the present engineering tests or exploratory runs.
+
+## Structured repair scope and authorized remote delivery
+
+Previously verified b43ed80 was pushed to codex/learning-engine-p0 after scanning
+all reachable historical blobs, commit messages and original private-file hashes.
+GitHub CI run 39234950719 passed backend/frontend. gh's saved login was invalid;
+the existing Git credential manager was used in child-process memory only.
+
+Production repair now receives the complete structured critic (including issues
+beyond the former 1000-character cut-off), exact findings and unit scope. Located
+minor wording defects use bounded patches; major defects stay unit-local. Valid
+knowledge coverage, undisputed resolved references and verified sibling hashes
+are checked before mandatory post-repair critique. Item repair preserves valid
+knowledge IDs and its learning objective and is independently revalidated. Failed
+repairs retain partial status, never READY by model assertion alone.
+
+New adversarial tests cover omitted late critic defects, localized editing,
+reference/concept deletion, sibling preservation and learning-target substitution.
+Backend: 173 passed / 1 skipped. Frontend npm ci initially hit ECONNRESET; the
+unchanged lockfile/prefer-offline retry succeeded, then 22 tests, lint, typecheck
+and build passed. CI now explicitly includes frontend lint/typecheck.
+No new paid calls; original USD 0.50 authorization and ledger remain in force.
