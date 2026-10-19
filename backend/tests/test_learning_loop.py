@@ -189,3 +189,22 @@ def test_api_attempts_persist_restore_and_are_idempotent_and_owned(learning_clie
     # Additive table initialization must not remove existing projects/attempts.
     projects.initialize_review_database()
     assert len(client.get('/api/review-projects/projects',headers=headers).json())==1
+
+
+def test_mistakes_are_answer_linked_persistent_and_never_invent_cause(learning_client):
+    client,headers,other,job=learning_client
+    endpoint=f'/api/review-projects/learning/jobs/{job}/attempts'
+    wrong={'item_id':'p1','kind':'practice','answer':'B','nonce':'wrong-reference'}
+    assert client.post(endpoint,headers=headers,json=wrong).json()['assessment']['score']==0
+    assert client.post(endpoint,headers=headers,json=wrong).status_code==200
+    progress=client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=headers).json()
+    assert progress['diagnostics']['k1']['record_count']==1
+    assert progress['diagnostics']['k1']['categories']=={'uncertain':1}
+    assert progress['recommendation']['practice_item_ids']==['p1']
+    correct={**wrong,'answer':'A','nonce':'later-correct'}
+    assert client.post(endpoint,headers=headers,json=correct).status_code==200
+    projects.initialize_review_database()
+    progress=client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=headers).json()
+    assert progress['diagnostics']['k1']['record_count']==1
+    assert progress['mastery']['k1']['attempts']==2
+    assert client.get(f'/api/review-projects/learning/jobs/{job}/progress',headers=other).status_code==404

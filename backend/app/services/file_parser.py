@@ -183,11 +183,18 @@ def parse_markdown(path: Path) -> list[ParsedPage]:
 
 
 def parse_text(path: Path) -> list[ParsedPage]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    return [ParsedPage(page_number=1, text=text, source="text_extract")]
+    data = path.read_bytes()
+    encodings = ["utf-16"] if data.startswith((b'\xff\xfe',b'\xfe\xff')) else ["utf-8-sig","gb18030"]
+    for encoding in encodings:
+        try:
+            text = data.decode(encoding,errors="strict")
+        except UnicodeDecodeError:
+            continue
+        if '\x00' in text:
+            raise ParseError("文本包含 NUL 字节；请以 UTF-8 或带 BOM 的 UTF-16 重新保存，未静默丢弃内容。")
+        return [ParsedPage(page_number=1,text=text,source="text_extract",
+            warning=f"TEXT_ENCODING:{encoding}; decoded without discarding bytes" if encoding != "utf-8-sig" else None)]
+    raise ParseError("无法无损解码文本；请以 UTF-8 或带 BOM 的 UTF-16 重新保存，未静默丢弃内容。")
 
 
 def parse_pdf(

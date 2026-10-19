@@ -53,3 +53,19 @@ it('reuses the idempotency token after an uncertain network outcome',async()=>{
   const posts=vi.mocked(reviewApi).mock.calls.filter(([,method])=>method==='POST');
   expect(posts[0][2]).toEqual(posts[1][2]);
 });
+
+it('binds persisted recall rating and due date without adding layout elements',async()=>{
+  vi.mocked(reviewApi).mockResolvedValue({attempts:[{item_id:'c1',kind:'recall',answer:'',assessment:{...assessment,assessed_by:'learner_self_report'},created_at:'2030-01-01'}],
+    mastery:{k1:{mastery:.6,next_review:'2030-01-03T00:00:00Z'}},recommendation:{items:[]}} as never);
+  const {container}=render(<Flashcards cards={[{card_id:'c1',knowledge_ids:['k1'],front:'Recall question',back:'Recall answer',tags:'test'}]} jobId="owned-job"/>);
+  expect(await screen.findByText(/上次自评 100% · 复习日期 2030-01-03/)).toBeInTheDocument();
+  expect(container.querySelectorAll('.flashcard > small')).toHaveLength(1);
+});
+
+it('does not carry a saved answer into a different generation job',async()=>{
+  vi.mocked(reviewApi).mockImplementation(async(path)=>path.includes('first-job')?{attempts:[{item_id:'q1',kind:'practice',answer:'old private answer',assessment,created_at:'2030-01-01'}],mastery:{},recommendation:{items:[]}} as never:{attempts:[],mastery:{},recommendation:{items:[]}} as never);
+  const {rerender}=render(<Questions questions={[question]} mock={false} jobId="first-job"/>);
+  await waitFor(()=>expect(screen.getByLabelText('第 1 题答案')).toHaveValue('old private answer'));
+  rerender(<Questions questions={[question]} mock={false} jobId="second-job"/>);
+  await waitFor(()=>expect(screen.getByLabelText('第 1 题答案')).toHaveValue(''));
+});

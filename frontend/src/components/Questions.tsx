@@ -8,12 +8,15 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
   const [assessments,setAssessments]=useState<Record<number,LearningAttempt>>({});
   const started=useRef(Date.now());
   const saving=useRef(new Set<number>());
+  const currentAnswers=useRef<Record<number,string>>({});
   const learning=useLearningProgress(jobId);
+  useEffect(()=>{setAnswers({});setRevealed({});setAssessments({});currentAnswers.current={};started.current=Date.now();},[jobId,mock]);
   useEffect(()=>{
     if(!learning.progress)return;
     const restored:Record<number,string>={};const feedback:Record<number,LearningAttempt>={};
     for(const attempt of learning.progress.attempts){if(attempt.kind!==(mock?'exam':'practice'))continue;const index=questions.findIndex(q=>q.question_id===attempt.item_id);if(index>=0){restored[index]=attempt.answer;feedback[index]=attempt;}}
-    setAnswers(current=>({...restored,...current}));setAssessments(feedback);
+    const activeAnswers={...restored,...currentAnswers.current};currentAnswers.current=activeAnswers;
+    setAnswers(activeAnswers);setAssessments(Object.fromEntries(Object.entries(feedback).filter(([index,attempt])=>activeAnswers[Number(index)]===attempt.answer)));
   },[learning.progress,questions,mock]);
   async function reveal(index:number){
     if(saving.current.has(index))return;
@@ -21,7 +24,7 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
     if(revealed[index]||!answers[index]?.trim())return;
     saving.current.add(index);
     const saved=await learning.record(questions[index].question_id||'',mock?'exam':'practice',answers[index],(Date.now()-started.current)/1000);
-    if(saved)setAssessments(old=>({...old,[index]:saved}));
+    if(saved&&currentAnswers.current[index]===saved.answer)setAssessments(old=>({...old,[index]:saved}));
     saving.current.delete(index);
   }
   async function selfAssess(index:number,key:string){
@@ -32,6 +35,7 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
     saving.current.delete(index);
   }
   function changeAnswer(index:number,value:string){
+    currentAnswers.current[index]=value;
     setAnswers(old=>({...old,[index]:value}));
     setAssessments(old=>{const next={...old};delete next[index];return next;});
     setRevealed(old=>({...old,[index]:false}));
@@ -52,9 +56,10 @@ export function Questions({questions,mock,jobId}: {questions:GeneratedExamQuesti
         <strong>解析</strong><p>{question.explanation||'本题未返回详细解析'}
           {assessments[i]&&` · ${assessments[i].assessment.score===null?'需结合 Rubric 自评（解析按钮 Alt+1–4）':`本题得分：${Math.round(assessments[i].assessment.score!*100)}%`} · ${assessments[i].assessment.uncertainty}`}
           {!!assessments[i]?.assessment.missing_points.length&&` · 待核对要点：${assessments[i].assessment.missing_points.join('；')}`}
+          {!!assessments[i]?.assessment.errors?.length&&` · 错因依据：${assessments[i].assessment.errors!.map(error=>error.basis).join('；')}`}
         </p>
       </div></div>}
-      <p className="source-label">{question.source_basis||question.source_hint||'基于上传材料生成'}{question.concept&&` · ${question.concept}`}{learning.error&&` · ${learning.error}`}</p>
+      <p className="source-label">{question.source_basis||question.source_hint||'基于上传材料生成'}{question.concept&&` · ${question.concept}`}{!mock&&learning.progress?.recommendation.practice_item_ids?.[0]===question.question_id&&' · 当前推荐复习'}{learning.error&&` · ${learning.error}`}</p>
     </section>)}
   </>;
 }

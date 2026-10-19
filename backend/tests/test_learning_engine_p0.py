@@ -97,6 +97,21 @@ def test_only_rejected_item_is_repaired_and_checkpointed(monkeypatch):
     assert not resumed.calls
 
 
+def test_repair_cannot_displace_a_valid_exam_item(monkeypatch):
+    class DuplicateRepair(GroundedProvider):
+        def generate_stage(self,stage,prompt,config,*,max_output_tokens):
+            if stage == 'artifact_repair':
+                payload=json.loads(prompt)['payload']
+                return {**payload['item'],'answer':'Controls transport',
+                    'question':'Explain the role of the membrane in transport.'}
+            return super().generate_stage(stage,prompt,config,max_output_tokens=max_output_tokens)
+    result,_=run(monkeypatch,DuplicateRepair(invalid_question=True))
+    assert result.llm_status=='partial'
+    assert not result.report.practice_questions
+    assert [q.question_id for q in result.report.mock_exam.questions]==['e1']
+    assert result.report.overview['artifact_repairs'][0]['status']=='FAILED'
+
+
 def test_every_successful_stage_is_reused_and_failed_unit_recovers(monkeypatch):
     saved = {}
     def callback(key, chapter, chunk, status, content, code, message):

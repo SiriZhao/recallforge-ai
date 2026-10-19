@@ -11,6 +11,7 @@ class EvidenceSpan(BaseModel):
     text: str
     content_hash: str
     confidence: float = Field(ge=0, le=1)
+    confidence_basis: str = "Parser heuristic, not calibrated extraction accuracy or factual correctness"
     extraction_warnings: list[str] = Field(default_factory=list)
 
 
@@ -28,9 +29,12 @@ def catalog_for(parsed_files):
                 ref = SourceRef(document_id=doc_id, filename=parsed.original_filename or parsed.filename,
                     page=None if parsed.file_type == ".pptx" else page.page_number,
                     slide=page.page_number if parsed.file_type == ".pptx" else None, block_id=block_id, anchor=anchor)
+                warnings=[page.warning] if page.warning else []
+                if page.source == "ocr_fallback":warnings.append("OCR_NOT_HUMAN_VERIFIED: formulas, code and specialist terms may be corrupted")
+                if any(block.type == "image" for block in page.blocks):warnings.append("UNINTERPRETED_VISUAL_CONTENT: image blocks are not textual evidence for diagram claims")
                 spans.append(EvidenceSpan(evidence_id=stable_hash([doc_id, page.page_number, block_id, text])[:24],
                     source=ref, text=text, content_hash=stable_hash(text), confidence=confidence,
-                    extraction_warnings=[page.warning] if page.warning else []))
+                    extraction_warnings=warnings))
     return spans
 
 

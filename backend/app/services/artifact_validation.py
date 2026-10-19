@@ -37,7 +37,7 @@ def _question_failure(question, allowed, concepts):
     if question.reference_expression is not None:
         if question.numeric_answer is None or not verify(question.reference_expression,question.numeric_answer,question.quantity_kind):
             return "numeric_solution_inconsistent_or_unsupported"
-    if question.requires_diagram:
+    if question.requires_diagram or re.search(r'如图|图中|见图|识图|according to (?:the )?(?:diagram|figure)|shown in (?:the )?figure',question.question,re.I):
         return "diagram_interpretation_not_verified"
     choice = question.options or re.search(r"choice|选择", question.question_type, re.I)
     if choice:

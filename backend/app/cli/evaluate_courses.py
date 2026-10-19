@@ -174,9 +174,50 @@ def patch_baseline(output,subject):
     print(json.dumps({'patch_status':'COMPLETE','changes':len(patch.get('corrections',[])),'budget':client.summary()}))
 
 
+def engine_regression(output,subject):
+    """Evaluate a new revision without rewriting the earlier paired experiment.
+
+    It shares the ORIGINAL total-budget ledger. This is a regression run, not a
+    new superiority comparison; unchanged validated stage checkpoints are reused.
+    """
+    import subprocess
+    from app.services import generation_pipeline as pipeline
+    from app.services.learning_evaluation import source_files
+    revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[3],text=True).strip()
+    manifest=json.loads((output/f'{subject}-manifest.json').read_text(encoding='utf-8'))
+    destination=output/'regressions'/f'{subject}-{revision[:12]}'
+    destination.mkdir(parents=True,exist_ok=True)
+    checkpoint_path=destination/'checkpoints.json'
+    original=output/f'{subject}-checkpoints.json'
+    saved=json.loads(original.read_text(encoding='utf-8')) if original.exists() else {}
+    if checkpoint_path.exists():saved.update(json.loads(checkpoint_path.read_text(encoding='utf-8')))
+    values=dotenv_values(Path(__file__).resolve().parents[2]/'.env')
+    client=EvaluationClient(output/'paid-ledger.sqlite3',key=values.get('DEEPSEEK_API_KEY') or values.get('ERA_DEEPSEEK_API_KEY'))
+    provider=BudgetedStageProvider(client,f"{subject}-{manifest['source_hash'][:12]}-regression-{revision[:12]}")
+    def checkpoint(key,chapter,chunk,status,content,code,message):
+        saved[key]={'status':status,'content':content};save(checkpoint_path,saved)
+    parsed=source_files(manifest)
+    metadata={'revision':revision,'purpose':'ENGINE_REGRESSION_NOT_PAIRED_COMPARISON','source_hash':manifest['source_hash'],'budget_before':client.summary()}
+    save(destination/'manifest.json',metadata)
+    try:
+        with patch.object(pipeline,'get_llm_provider',return_value=provider):
+            result,stats=pipeline.generate_hierarchical_report(parsed,None,LLMConfig(enabled=True,provider='deepseek',model=client.model),
+                job_id=manifest['source_hash'],title=subject,study_goal='balanced',exam_type='closed_book',
+                learner_context={'daily_minutes':45,'learning_mode':'understand','focus':manifest['objective'],
+                    'artifact_targets':{'exam_questions':2,'practice_questions':2,'recall_cards':4,'max_units':2}},
+                material_types={file.filename:'past_exam' for file in parsed},checkpoints=saved,checkpoint_callback=checkpoint)
+        save(destination/'result.json',{'result':result.report.model_dump(mode='json'),'status':result.llm_status,'stats':vars(stats)})
+        metadata['status']=result.llm_status
+    except Exception as exc:
+        metadata['status']=type(exc).__name__
+    metadata['budget_after']=client.summary()
+    save(destination/'manifest.json',metadata)
+    print(json.dumps(metadata,ensure_ascii=True),flush=True)
+
+
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('mode',choices=['ocr','compare','match-baseline','patch-baseline'])
+    parser.add_argument('mode',choices=['ocr','compare','match-baseline','patch-baseline','engine-regression'])
     parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--subject',choices=['probability','python','botany','organic'],default='probability')
     parser.add_argument('--question-count',type=int,choices=range(1,11),default=5)
@@ -185,6 +226,7 @@ def main():
     output.mkdir(parents=True,exist_ok=True)
     if args.mode=='match-baseline':match_baseline(output,args.subject)
     elif args.mode=='patch-baseline':patch_baseline(output,args.subject)
+    elif args.mode=='engine-regression':engine_regression(output,args.subject)
     else:(ocr_probe if args.mode=='ocr' else lambda root,out:compare(root,out,args.subject,args.question_count))(args.source.resolve(),output)
 
 

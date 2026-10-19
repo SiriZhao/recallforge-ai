@@ -170,3 +170,40 @@ course relations and formula conditions, add vetted independent answers before
 efficacy claims, and check Windows packaging on the final frozen source snapshot.
 Earlier PyInstaller smoke build succeeded but preceded this snapshot; Inno Setup
 and optional WeasyPrint native libraries were unavailable. Main/release unchanged.
+
+## Adaptive feedback and extraction safety follow-through (2026-10-19)
+
+Added additive learning_misconceptions records linked to actual attempts and
+knowledge IDs. Unknown causes stay uncertain; later correct answers update mastery
+without deleting historical evidence. Retry nonces cannot duplicate this history.
+Project deletion includes the additive records. Progress now returns ranked real
+practice IDs and diagnostics; existing card text shows persisted self ratings/due
+dates and existing question text shows assessment evidence/recommendations. Fixed
+state leaking across generation jobs and stale grading after answer edits. Tests
+assert retained DOM containers; CSS remains index-DGYlaRpg.css.
+
+Text decoding no longer uses errors=ignore: BOM UTF-16 and GB18030 are decoded
+strictly, unknown/corrupt input fails explicitly. Evidence carries OCR-unverified,
+uninterpreted-visual and heuristic-confidence warnings. Diagram-dependent questions
+cannot bypass quarantine merely by omitting requires_diagram=true.
+
+Validation: full backend 162 passed / 1 skipped; frontend 22 passed; lint,
+typecheck, build and diff check passed. A compatibility error from Array.at was
+fixed without changing the TypeScript target; the synthetic CLI fixture was fixed
+to provide required summary data, without weakening production assertions.
+
+Real-model revision regression is kept apart from the original paired experiment,
+with the same global spend ledger and private manifests. It generated 2 practice
+questions, 2 different exam questions and 4 cards. All 18 reported source locators
+resolved and all structured entities had citation fields. These are locator/field
+checks, NOT entailment or answer correctness. Both teaching units still failed the
+critic because source OCR/terminology and unsupported external explanation need
+review. The output remains partial; no gates were relaxed. Cumulative conservative
+upper bound: USD 0.3782982 across 73 requests; zero uncertain requests. This revision
+regression is not a fresh budget-matched superiority experiment.
+
+Remaining acceptance gaps: independently checked real-course gold answers and
+human blind ratings; six-course efficacy measurement; diagram/chemical-structure
+understanding; robust programming behavior verification; semantic dependency and
+formula-condition completeness; exact current-source Windows installer/runtime
+acceptance. No paid requests should be made without consulting the existing ledger.

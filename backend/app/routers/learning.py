@@ -49,6 +49,17 @@ class ExamAttempt(Base):
     content_json:Mapped[str]=mapped_column(Text)
 
 
+class MisconceptionRecord(Base):
+    """Answer-linked evidence, not an inferred psychological diagnosis."""
+    __tablename__="learning_misconceptions"
+    id:Mapped[str]=mapped_column(String(36),primary_key=True)
+    project_id:Mapped[str]=mapped_column(String(36),index=True)
+    attempt_id:Mapped[str]=mapped_column(String(36),index=True)
+    knowledge_id:Mapped[str]=mapped_column(String(100),index=True)
+    category:Mapped[str]=mapped_column(String(40))
+    basis:Mapped[str]=mapped_column(Text)
+
+
 class AttemptRequest(BaseModel):
     item_id:str=Field(min_length=1,max_length=100)
     kind:str=Field(pattern="^(practice|exam|recall)$")
@@ -97,7 +108,13 @@ def save_attempt(job_id:str,payload:AttemptRequest,workspace:Workspace=Depends(c
             "duration_seconds":payload.duration_seconds,"assessment":assessment,"knowledge_ids":item.get("knowledge_ids",[]),"created_at":now}
     db.add(PracticeAttempt(id=attempt_id,project_id=project.id,job_id=job_id,nonce=payload.nonce,item_id=payload.item_id,
         kind=payload.kind,payload_hash=digest,content_json=json.dumps(result,ensure_ascii=False)))
+    errors=assessment["errors"]
+    if not errors and assessment["score"] is not None and assessment["score"] < .8:
+        errors=[{"category":"uncertain","basis":"Low reported/reference-relative score; the causal error category is unknown."}]
     for knowledge_id in item.get("knowledge_ids",[]):
+        for error in errors:
+            db.add(MisconceptionRecord(id=str(uuid4()),project_id=project.id,attempt_id=attempt_id,
+                knowledge_id=knowledge_id,category=error["category"],basis=error["basis"]))
         state=db.get(ConceptMastery,(project.id,knowledge_id))
         prior=json.loads(state.state_json) if state else None
         updated=update_mastery(prior,assessment["score"],item.get("difficulty","medium"))
@@ -132,4 +149,22 @@ def learning_progress(job_id:str,workspace:Workspace=Depends(current_workspace),
     # The generation request's context remains useful for legacy projects.
     settings={**report.get("overview",{}).get("learner_context",{}),**settings}
     attempts=sorted([json.loads(row.content_json) for row in rows],key=lambda row:row["created_at"])
-    return {"attempts":attempts,"mastery":states,"recommendation":recommend(concepts,states,settings)}
+    recommendation=recommend(concepts,states,settings)
+    priorities={row["knowledge_id"]:index for index,row in enumerate(recommendation["items"])}
+    last={attempt["item_id"]:attempt for attempt in attempts if attempt["kind"]=="practice"}
+    practice=report.get("practice_questions",[])
+    def rank(item):
+        previous=last.get(item.get("question_id"),{}).get("assessment",{})
+        score=previous.get("score")
+        return (min((priorities[key] for key in item.get("knowledge_ids",[]) if key in priorities),default=len(priorities)),
+            score is not None and score>=.8, score if score is not None else .5)
+    recommendation["practice_item_ids"]=[item["question_id"] for item in sorted(practice,key=rank) if item.get("question_id")]
+    # Historical errors are immutable; current mastery is returned separately so
+    # a later success does not erase the evidence trail or label it a current error.
+    mistakes=db.scalars(select(MisconceptionRecord).where(MisconceptionRecord.project_id==project.id)).all()
+    diagnostics={}
+    for mistake in mistakes:
+        entry=diagnostics.setdefault(mistake.knowledge_id,{"record_count":0,"categories":{},"basis":"historical answer evidence, not a verified causal diagnosis"})
+        entry["record_count"]+=1
+        entry["categories"][mistake.category]=entry["categories"].get(mistake.category,0)+1
+    return {"attempts":attempts,"mastery":states,"recommendation":recommendation,"diagnostics":diagnostics}

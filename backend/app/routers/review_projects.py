@@ -221,8 +221,8 @@ def create_project(payload: ProjectCreate, workspace: Workspace = Depends(curren
 @router.delete("/projects/{project_id}", status_code=204)
 def delete_project(project_id: str, workspace: Workspace = Depends(current_workspace), db: Session = Depends(db_session)) -> Response:
     project = owned_project(db, workspace, project_id)
-    from app.routers.learning import PracticeAttempt, ConceptMastery, ReviewSchedule, ExamAttempt
-    for learning_model in (PracticeAttempt, ConceptMastery, ReviewSchedule, ExamAttempt):
+    from app.routers.learning import PracticeAttempt, ConceptMastery, ReviewSchedule, ExamAttempt, MisconceptionRecord
+    for learning_model in (PracticeAttempt, ConceptMastery, ReviewSchedule, ExamAttempt, MisconceptionRecord):
         db.execute(delete(learning_model).where(learning_model.project_id == project.id))
     saved_filenames = list(db.scalars(select(ProjectFile.saved_filename).where(ProjectFile.project_id == project.id)).all())
     report_ids = list(db.scalars(select(Report.id).where(Report.project_id == project.id)).all())
