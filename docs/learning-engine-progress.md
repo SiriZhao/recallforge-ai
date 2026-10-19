@@ -223,3 +223,13 @@ frontend bytes with the current tree, and checks for env/database archive entrie
 It correctly detected three stale engine modules in a successful-but-earlier
 PyInstaller build. Build success alone is not final-source/runtime acceptance.
 Final backend run with the provenance-checker regression: 165 passed / 1 skipped.
+
+## Case-sensitive subject answers
+
+Fixed a concrete programming/chemistry scoring defect: casefolded option text
+could map print(a) to print(A), or Co to CO. Text options now require exact content
+matches before permissive option-label parsing. Unicode string literal contents
+are not folded. Question/card deduplication uses the same code-sensitive signature
+as exam extraction, preserving Python case and indentation. These are deterministic
+identity/scoring improvements, not a full Python or chemical-reaction verifier.
+Full backend: 166 passed / 1 skipped; no additional paid requests.

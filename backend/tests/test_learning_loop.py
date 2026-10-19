@@ -47,6 +47,17 @@ def test_subjective_assessment_does_not_invent_a_grade():
     assert assess_answer({'answer':'reference'},'learner',self_score=.5)['assessed_by']=='learner_self_report'
 
 
+def test_code_and_chemical_option_case_is_not_erased_by_scoring():
+    from app.services.choice_answers import answer_labels
+    assert answer_labels('print(a)',['print(A)','print(a)'])=={'B'}
+    assert answer_labels('Co',['CO','Co'])=={'B'}
+    assert answer_labels('"Ａ"',['"A"','"Ａ"'])=={'B'}
+    assert answer_labels('print("a b")',['print("ab")','print("a b")'])=={'B'}
+    item={'question_type':'multiple_choice','options':['print(A)','print(a)'],'answer':'print(a)'}
+    assert assess_answer(item,'A')['score']==0
+    assert assess_answer(item,'B')['score']==1
+
+
 def test_duplicate_exam_stems_keep_their_distinct_continuations_and_sources():
     def source(name, ending):
         pages=[ParsedPage(page_number=1,text='1. Explain this calculation using the data on the next page.',source='text_extract',source_anchor=f'{name}, p. 1'),

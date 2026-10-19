@@ -4,10 +4,12 @@ import unicodedata
 
 
 def answer_labels(value,options):
-    text=unicodedata.normalize('NFKC',value).strip()
-    normalized=lambda item:re.sub(r'\s+','',unicodedata.normalize('NFKC',item)).casefold()
+    raw=value.strip()
     for index,option in enumerate(options):
-        if normalized(text)==normalized(option):return {chr(65+index)}
+        # Code variables, string literals and chemical symbols are case-sensitive.
+        # An approximate text match must never award the wrong option's score.
+        if raw==option.strip():return {chr(65+index)}
+    text=unicodedata.normalize('NFKC',raw)
     text=re.sub(r'^(?:答案|正确答案|answer)\s*[:：]\s*','',text,flags=re.I)
     text=text.strip('()[]（） ')
     if not re.fullmatch(r'[A-Ha-h](?:\s*[,、;\s]?\s*[A-Ha-h])*',text):return None

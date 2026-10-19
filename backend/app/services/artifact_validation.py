@@ -9,6 +9,7 @@ from app.services.stage_checkpoints import stable_hash
 from app.services.evidence_catalog import catalog_for, resolves
 from app.services.numeric_verification import verify
 from app.services.choice_answers import answer_labels
+from app.services.exam_evidence import question_signature
 
 
 def _text(value):
@@ -41,7 +42,7 @@ def _question_failure(question, allowed, concepts):
         return "diagram_interpretation_not_verified"
     choice = question.options or re.search(r"choice|选择", question.question_type, re.I)
     if choice:
-        if len(question.options) < 2 or len({_text(o) for o in question.options}) != len(question.options) or not all(o.strip() for o in question.options):
+        if len(question.options) < 2 or len({question_signature(o) for o in question.options}) != len(question.options) or not all(o.strip() for o in question.options):
             return "invalid_options"
         labels = answer_labels(question.answer,question.options)
         if labels is None:
@@ -72,7 +73,7 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
                 question = Question.model_validate(item)
                 question.knowledge_ids = [course.concept_id_aliases.get(value,value) for value in question.knowledge_ids]
                 failure = _question_failure(question, allowed, concepts)
-                signature = _text(question.question)
+                signature = question_signature(question.question)
                 if signature in seen:
                     failure = "duplicate_question_or_practice_exam_overlap"
                 if question.question_id in seen_ids:
@@ -97,9 +98,9 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
             card.knowledge_ids = [course.concept_id_aliases.get(value,value) for value in card.knowledge_ids]
             if not card.front.strip() or not card.back.strip() or not _refs_valid(card.source_refs, allowed) or not set(card.knowledge_ids).issubset(concepts):
                 raise ValueError("invalid_card_or_evidence")
-            if _text(card.front) in seen_cards:
+            if question_signature(card.front) in seen_cards:
                 raise ValueError("duplicate_card")
-            seen_cards.add(_text(card.front))
+            seen_cards.add(question_signature(card.front))
             artifacts.recall_cards.cards.append(card)
         except (ValidationError, ValueError, TypeError) as exc:
             quality.quarantined.append({"collection": "recall_cards", "index": index, "reason": str(exc)[:400]})
