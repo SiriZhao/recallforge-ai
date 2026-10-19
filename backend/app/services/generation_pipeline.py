@@ -796,9 +796,16 @@ def generate_hierarchical_report(
                 if critique.verdict != "READY" or critique.issues or critique.missing_knowledge_ids or any(f.severity!='info' for f in critique.findings):
                     raise ValueError("; ".join(critique.issues or [critique.verdict]))
                 spans = catalog_for(parsed_files)
+                from app.services.evidence_catalog import support_trace
+                traces = []
                 for claim in critique.claims:
                     if claim.basis == "INSUFFICIENT" or (claim.basis != "GENERATED" and (not claim.source_refs or not all(resolves(ref, spans) for ref in claim.source_refs))):
                         raise ValueError("Unresolved claim evidence")
+                    support = [support_trace(ref, spans) for ref in claim.source_refs]
+                    traces.append({'claim': claim.claim, 'basis': claim.basis, 'sources': support})
+                    if claim.basis == 'SUPPORTED' and any(item['status'] != 'QUOTED_SOURCE' for item in support):
+                        raise ValueError('Supported claim requires exact source quotation, not just a page locator')
+                unit_quality[-1]['support_traces'] = traces
                 return candidate
             try:
                 draft = review_draft(draft, 0)
@@ -908,7 +915,7 @@ def _v4_prompt(stage: str, payload: dict) -> str:
         "unit_repair": ("Repair only the identified defects using supplied evidence. Preserve valid content, required knowledge and unit identity. Return the repaired unit.", UnitDraft.model_json_schema()),
         "unit_patch": ("Correct only the critic-identified minor wording spans. Return patches with exact original-text start/end offsets and replacement text. Do not reprint the unit or change its evidence, identity, or other content.",
             {"type":"object","required":["patches"],"additionalProperties":False,"properties":{"patches":{"type":"array","minItems":1,"items":{"type":"object","required":["start","end","replacement"],"additionalProperties":False,"properties":{"start":{"type":"integer"},"end":{"type":"integer"},"replacement":{"type":"string"}}}}}}),
-        "unit_critic": ("Review the unit against evidence and plan. Check factual grounding, explanation and conditions, formula use, specificity, redundancy, scope, contradictions and missing knowledge. List important claims with SUPPORTED/INFERRED/GENERATED/INSUFFICIENT basis and source refs. Use READY only if no repair is needed. Do not delete hard concepts to pass.", UnitCritique.model_json_schema()),
+        "unit_critic": ("Review the unit against evidence and plan. Check factual grounding, explanation and conditions, formula use, specificity, redundancy, scope, contradictions and missing knowledge. List important claims with SUPPORTED/INFERRED/GENERATED/INSUFFICIENT basis and source refs. Every SUPPORTED claim needs an exact supporting excerpt in SourceRef.fragment; a valid page locator is not support. Check that the excerpt actually supports the claim, preserve scientific case and whitespace, and consider extraction warnings. Flag unsupported implications and OCR-corrupted terms instead of guessing. Use READY only if no repair is needed. Do not delete hard concepts to pass.", UnitCritique.model_json_schema()),
     }
     instruction, schema = contracts.get(stage, ("Use provided evidence and record uncertainty.", {}))
     if stage=='unit_repair':schema={**schema,'additionalProperties':False}

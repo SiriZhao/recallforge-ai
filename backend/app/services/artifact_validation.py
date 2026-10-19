@@ -150,6 +150,19 @@ def project_artifacts(report, artifacts, intent):
     report.mock_exam = GeneratedMockExam(title=artifacts.mock_exam.title,
         questions=[GeneratedExamQuestion.model_validate(q.model_dump()) for q in artifacts.mock_exam.questions])
     report.anki_cards = [AnkiCard.model_validate(card.model_dump()) for card in artifacts.recall_cards.cards]
+    # Derive visible attribution from validated structured refs, not arbitrary
+    # model-written hint fields. Preserve the existing UI and export contract.
+    for item in [*report.practice_questions, *report.mock_exam.questions, *report.anki_cards]:
+        locations = []
+        for ref in item.source_refs:
+            location = ref.anchor or ', '.join(filter(None, [ref.filename or ref.document_id,
+                f'p. {ref.page}' if ref.page is not None else f'slide {ref.slide}' if ref.slide is not None else '']))
+            if ref.block_id:
+                location += f' / {ref.block_id}'
+            locations.append(location)
+        item.source_hint = '; '.join(dict.fromkeys(locations))
+        if isinstance(item, GeneratedExamQuestion):
+            item.source_basis = f'{item.provenance}: source location validated; answer correctness not independently certified'
     course = artifacts.course_model
     for index, draft in enumerate(artifacts.learning_material.units):
         plan = artifacts.study_blueprint.units[index].model_dump(mode="json") if index < len(artifacts.study_blueprint.units) else {}

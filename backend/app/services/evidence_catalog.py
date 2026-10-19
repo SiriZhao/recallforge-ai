@@ -41,8 +41,6 @@ def catalog_for(parsed_files):
 def resolves(ref: SourceRef, spans: list[EvidenceSpan]) -> bool:
     def anchor_key(value):
         return re.sub(r"\s+", "", value).casefold()
-    def text_key(value):
-        return re.sub(r"\s+", " ", value).strip()
     for span in spans:
         source = span.source
         explicit_location = bool((ref.document_id or ref.filename) and (ref.page is not None or ref.slide is not None))
@@ -52,7 +50,9 @@ def resolves(ref: SourceRef, spans: list[EvidenceSpan]) -> bool:
             continue
         if any(getattr(ref, field) not in (None, "", getattr(source, field)) for field in ("document_id", "filename", "page", "slide", "block_id")):
             continue
-        if ref.fragment and text_key(ref.fragment) not in text_key(span.text):
+        # Whitespace can change a string literal, code block or formula. Do not
+        # normalize it away to manufacture a matching quotation.
+        if ref.fragment and ref.fragment not in span.text:
             continue
         if (ref.text_start is None) != (ref.text_end is None):
             continue
@@ -63,3 +63,14 @@ def resolves(ref: SourceRef, spans: list[EvidenceSpan]) -> bool:
                 continue
         return True
     return False
+
+
+def support_trace(ref: SourceRef, spans: list[EvidenceSpan]) -> dict:
+    """Expose what was actually checked; a quote is not an entailment proof."""
+    matched = [span for span in spans if resolves(ref, [span])]
+    return {
+        'status': 'UNRESOLVED' if not matched else 'QUOTED_SOURCE' if ref.fragment.strip() else 'LOCATOR_ONLY',
+        'evidence_ids': [span.evidence_id for span in matched],
+        'extraction_warnings': list(dict.fromkeys(w for span in matched for w in span.extraction_warnings)),
+        'entailment': 'NOT_DETERMINISTICALLY_VERIFIED',
+    }

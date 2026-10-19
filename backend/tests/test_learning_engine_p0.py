@@ -40,7 +40,8 @@ class GroundedProvider:
                 raise RuntimeError("synthetic interruption")
             return {"markdown": "## Membrane\nThe membrane controls transport [synthetic.txt, p. 1].", "source_refs": [ref]}
         if stage == "unit_critic":
-            return {"verdict": "READY", "claims": [{"claim": "Membrane controls transport", "basis": "SUPPORTED", "source_refs": [ref]}]}
+            quote_ref = {**ref, 'fragment': 'The cell membrane controls transport.'}
+            return {"verdict": "READY", "claims": [{"claim": "Membrane controls transport", "basis": "SUPPORTED", "source_refs": [quote_ref]}]}
         return {"canonical_markdown": "# Membrane\nThe membrane controls transport [synthetic.txt, p. 1]."}
 
 

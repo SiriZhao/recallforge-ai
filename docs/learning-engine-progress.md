@@ -286,3 +286,23 @@ Backend: 173 passed / 1 skipped. Frontend npm ci initially hit ECONNRESET; the
 unchanged lockfile/prefer-offline retry succeeded, then 22 tests, lint, typecheck
 and build passed. CI now explicitly includes frontend lint/typecheck.
 No new paid calls; original USD 0.50 authorization and ledger remain in force.
+
+## Scientific identity and verifiable quotations
+
+Remote PR CI 39236449375 passed for f93d099. The next phase removes destructive
+case/space/Unicode folding from scientific entity identity and concept definitions.
+Code indentation, string literals, event symbols and chemical element case now
+remain distinct. Exact duplicate definitions can still merge; prior ID aliases
+survive repeat normalization. Existing stored reports/data are not rewritten.
+
+SUPPORTED critic claims now need exact source excerpts, not only valid page
+locators. Quote matching preserves whitespace; support traces record extraction
+warnings and explicitly do not claim deterministic entailment. Critic judgments
+remain fallible model reviews, not human gold. Validated structured references
+are projected into existing question/card citation fields without UI changes.
+
+Backend full run: 183 passed / 1 skipped (before the additional alias-idempotence
+assertion, which is verified with the focused suite). The first non-elevated
+focused run encountered Windows pytest temp directory permissions; using a fresh
+repository-owned basetemp with authorized process permissions resolved setup.
+No new paid calls. The USD 0.3782982 cumulative upper bound remains unchanged.
