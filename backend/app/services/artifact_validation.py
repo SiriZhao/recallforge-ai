@@ -10,6 +10,7 @@ from app.services.evidence_catalog import catalog_for, resolves
 from app.services.numeric_verification import verify
 from app.services.choice_answers import answer_labels
 from app.services.exam_evidence import question_signature
+from app.services.chemical_verification import check_reaction
 
 
 def _text(value):
@@ -38,6 +39,10 @@ def _question_failure(question, allowed, concepts):
     if question.reference_expression is not None:
         if question.numeric_answer is None or not verify(question.reference_expression,question.numeric_answer,question.quantity_kind):
             return "numeric_solution_inconsistent_or_unsupported"
+    if question.chemical_reaction is not None:
+        reaction_check=check_reaction(question.chemical_reaction)
+        if reaction_check['status']!='BALANCED':
+            return 'chemical_reaction_'+reaction_check['status'].lower()
     if question.requires_diagram or re.search(r'如图|图中|见图|识图|according to (?:the )?(?:diagram|figure)|shown in (?:the )?figure',question.question,re.I):
         return "diagram_interpretation_not_verified"
     choice = question.options or re.search(r"choice|选择", question.question_type, re.I)
@@ -83,6 +88,9 @@ def build_artifacts(course, blueprint, drafts, canonical, raw, parsed_files):
                 seen.add(signature)
                 seen_ids.add(question.question_id)
                 question.quality_status = "VALIDATED"
+                if question.chemical_reaction is not None:
+                    quality.verification_checks.append({'collection':collection,'question_id':question.question_id,
+                        **check_reaction(question.chemical_reaction)})
                 target.append(question)
             except (ValidationError, ValueError, TypeError) as exc:
                 quality.quarantined.append({"collection": collection, "index": index, "reason": str(exc)[:400]})

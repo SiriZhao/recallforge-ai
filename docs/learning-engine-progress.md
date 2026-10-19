@@ -321,3 +321,25 @@ changes rather than merely HTTP success, and reopens database initialization
 before reading preserved records. Full backend: 185 passed / 1 skipped.
 PR CI 39245790223 passed the preceding scientific identity phase (55c8682).
 No new paid calls, UI/layout/schema migration changes, main merge or release.
+
+## Chemical equation validation and current regressions
+
+Optional, backwards-compatible chemical_reaction data is now accepted in
+generated questions and projected through legacy reports. A bounded parser
+preserves element case, parentheses, integer stoichiometry and explicit charge.
+Unbalanced or unsupported supplied equations are quarantined and use the same
+bounded item-local repair path. Accepted checks persist their narrow scope:
+atom/charge conservation is NOT structural, mechanism or feasibility validation.
+Shorthand radicals, unparsed diagrams and unsupported notation are not guessed.
+
+Full backend: 189 passed / 1 skipped. Frontend: 22 tests plus lint, typecheck and
+build passed; existing CSS/JS bundle identities remain DGYlaRpg/Bxg5p-5F. No UI
+source changed. PR CI 39246117845 passed adaptive-learning commit 8fffea0.
+The current engine is undergoing a fresh isolated PyInstaller build; the earlier
+a87ad37 EXE does not establish parity for these newer source changes.
+
+Offline replay of the original paired botany outputs still reports PARTIAL for
+the engine. Both arms' existing references resolve, but independently assessed
+coverage, answer correctness and blind teaching ratings remain unavailable.
+No superiority or 95% coverage claim is made. Cached analysis incurred no API
+calls; the global spend upper bound remains USD 0.3782982, zero uncertain calls.

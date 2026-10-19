@@ -59,6 +59,7 @@ class QualityReport(BaseModel):
     # Structural gates are not claims of factual correctness or learning efficacy.
     failures: list[str] = Field(default_factory=list)
     quarantined: list[dict] = Field(default_factory=list)
+    verification_checks: list[dict] = Field(default_factory=list)
     factual_correctness: Literal["NOT_EVALUATED"] = "NOT_EVALUATED"
 
 

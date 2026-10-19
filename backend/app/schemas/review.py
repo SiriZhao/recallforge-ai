@@ -3,6 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.course_model import SourceRef
+from app.schemas.chemical_reaction import ChemicalReaction
 
 
 class UploadedFileInfo(BaseModel):
@@ -306,6 +307,7 @@ class GeneratedExamQuestion(BaseModel):
     reference_expression: str | None = None
     numeric_answer: float | None = None
     quantity_kind: str = "number"
+    chemical_reaction: ChemicalReaction | None = None
     question_type: str
     question: str
     answer: str
